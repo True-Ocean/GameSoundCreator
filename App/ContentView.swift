@@ -36,6 +36,64 @@ func stopAllPlayback() {
     GenerationService.shared.stop()
 }
 
+// MARK: - Shared UI bits
+
+private struct CreateCard: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: systemImage)
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .background(Color.accentColor.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+private struct SelectableRow: View {
+    let title: String
+    let subtitle: String?
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.35))
+            }
+            .contentShape(Rectangle())
+        }
+        .listRowBackground(selected ? Color.accentColor.opacity(0.08) : nil)
+    }
+}
+
 // MARK: - Home
 
 struct HomeView: View {
@@ -44,22 +102,29 @@ struct HomeView: View {
     var body: some View {
         List {
             Section {
-                Text("ジャンルやシーンを選ぶだけで、ゲーム用の音を作れます。")
+                Text("ゲームのシーンや用途を選ぶと、BGM・効果音を端末内で生成します。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .listRowBackground(Color.clear)
             }
 
             Section("新しく作る") {
                 NavigationLink {
                     WizardView(soundType: .bgm)
                 } label: {
-                    Label("BGMを作る", systemImage: "music.note.list")
+                    CreateCard(
+                        title: "BGMを作る",
+                        subtitle: "戦闘・メニューなどのループ曲",
+                        systemImage: "music.note.list"
+                    )
                 }
                 NavigationLink {
                     WizardView(soundType: .sfx)
                 } label: {
-                    Label("効果音を作る", systemImage: "waveform")
+                    CreateCard(
+                        title: "効果音を作る",
+                        subtitle: "攻撃・カード・UIなどの短い音",
+                        systemImage: "waveform"
+                    )
                 }
             }
 
@@ -71,10 +136,12 @@ struct HomeView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(entry.intent.title)
-                                Text(entry.intent.soundType.displayName)
+                                    .font(.body.weight(.medium))
+                                Text(recentSubtitle(entry.intent))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            .padding(.vertical, 2)
                         }
                     }
                 }
@@ -82,6 +149,11 @@ struct HomeView: View {
         }
         .navigationTitle("GameSoundCreator")
         .onAppear { library.load() }
+    }
+
+    private func recentSubtitle(_ intent: SoundIntent) -> String {
+        let mood = Catalog.Mood(rawValue: intent.moodId)?.displayName ?? intent.moodId
+        return "\(intent.soundType.displayName) · \(mood)"
     }
 }
 
@@ -98,16 +170,39 @@ struct WizardView: View {
 
     var body: some View {
         List {
+            Section {
+                Text(soundType == .bgm
+                     ? "使う場面と雰囲気を選んで生成します。"
+                     : "用途と雰囲気を選んで生成します。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("ジャンル") {
                 ForEach(Catalog.availableGenres) { item in
-                    genreRow(item)
+                    if item.isAvailable {
+                        SelectableRow(
+                            title: item.displayName,
+                            subtitle: nil,
+                            selected: genreId == item.id
+                        ) { genreId = item.id }
+                    } else {
+                        HStack {
+                            Text(item.displayName)
+                            Spacer()
+                            Text("準備中")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
                 }
             }
 
             Section(soundType == .bgm ? "シーン" : "用途") {
                 if soundType == .bgm {
                     ForEach(Catalog.availableBGMScenes) { item in
-                        selectRow(title: item.displayName, selected: sceneId == item.id) {
+                        SelectableRow(title: item.displayName, subtitle: nil, selected: sceneId == item.id) {
                             sceneId = item.id
                             if let scene = Catalog.BGMScene(rawValue: item.id) {
                                 moodId = scene.defaultMood.rawValue
@@ -117,8 +212,9 @@ struct WizardView: View {
                     }
                 } else {
                     ForEach(Catalog.availableSFXPurposes) { item in
-                        selectRow(
-                            title: "\(item.group ?? "") · \(item.displayName)",
+                        SelectableRow(
+                            title: item.displayName,
+                            subtitle: item.group,
                             selected: purposeId == item.id
                         ) {
                             purposeId = item.id
@@ -130,16 +226,25 @@ struct WizardView: View {
                 }
             }
 
-            Section("雰囲気") {
+            Section {
                 Picker("雰囲気", selection: $moodId) {
                     ForEach(Catalog.moods) { item in
                         Text(item.displayName).tag(item.id)
                     }
                 }
                 .pickerStyle(.segmented)
+                if let mood = Catalog.Mood(rawValue: moodId) {
+                    Text(mood.hint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("雰囲気")
+            } footer: {
+                Text("明るい／緊張／暗いでは、音色・高さ・ドラムの強さが大きく変わります。")
             }
 
-            Section("長さ") {
+            Section {
                 Picker("長さ", selection: $lengthId) {
                     ForEach(soundType == .bgm ? Catalog.bgmLengths : Catalog.sfxLengths) { item in
                         Text(item.displayName).tag(item.id)
@@ -148,9 +253,11 @@ struct WizardView: View {
                 .pickerStyle(.segmented)
                 if soundType == .bgm, let length = Catalog.BGMLength(rawValue: lengthId) {
                     Text("\(length.approximateSecondsHint)。ループは小節の頭（4/4）で繋がります。")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            } header: {
+                Text("長さ")
             }
 
             Section {
@@ -161,6 +268,7 @@ struct WizardView: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
+                .listRowBackground(Color.accentColor.opacity(0.12))
             }
         }
         .navigationTitle(soundType == .bgm ? "BGMを作る" : "効果音を作る")
@@ -185,41 +293,6 @@ struct WizardView: View {
             seed: UInt64.random(in: 1...999_999)
         )
     }
-
-    private func genreRow(_ item: Catalog.Item) -> some View {
-        HStack {
-            Text(item.displayName)
-            Spacer()
-            if item.isAvailable {
-                if genreId == item.id {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.tint)
-                }
-            } else {
-                Text("準備中")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if item.isAvailable { genreId = item.id }
-        }
-        .foregroundStyle(item.isAvailable ? .primary : .secondary)
-    }
-
-    private func selectRow(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                Text(title)
-                    .foregroundStyle(.primary)
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Result
@@ -240,7 +313,6 @@ struct ResultView: View {
     @State private var isBusy = false
     @State private var library = LibraryStore.shared
 
-    // Fine-tune mirrors
     @State private var sfxPitch: Double = 1
     @State private var sfxTimbre: Double = 0.5
     @State private var sfxIntensity: Double = 0.7
@@ -260,7 +332,14 @@ struct ResultView: View {
             Section("いまの設定") {
                 LabeledContent("種類", value: intent.soundType.displayName)
                 LabeledContent("内容", value: intent.title)
-                LabeledContent("雰囲気", value: Catalog.Mood(rawValue: intent.moodId)?.displayName ?? intent.moodId)
+                VStack(alignment: .leading, spacing: 4) {
+                    LabeledContent("雰囲気", value: Catalog.Mood(rawValue: intent.moodId)?.displayName ?? intent.moodId)
+                    if let mood = Catalog.Mood(rawValue: intent.moodId) {
+                        Text(mood.hint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 LabeledContent("長さ", value: lengthLabel)
                 if let seed = intent.seed {
                     LabeledContent("Seed", value: "\(seed)")
@@ -268,36 +347,53 @@ struct ResultView: View {
             }
 
             Section("再生") {
-                ProgressView(value: monitor.progress)
-                    .tint(.accentColor)
-                HStack {
-                    Text(monitor.currentTimeText)
-                    Spacer()
-                    Text(monitor.durationText)
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: monitor.progress)
+                        .tint(.accentColor)
+                    HStack {
+                        Text(monitor.currentTimeText)
+                        Spacer()
+                        Text(monitor.durationText)
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
 
                 if intent.soundType == .bgm {
                     Toggle("ループ再生", isOn: $loopEnabled)
                 }
 
-                Button("再生") { play(loop: loopEnabled && intent.soundType == .bgm) }
+                HStack {
+                    Button {
+                        play(loop: loopEnabled && intent.soundType == .bgm)
+                    } label: {
+                        Label("再生", systemImage: "play.fill")
+                    }
                     .disabled(isBusy)
-                Button("停止", role: .destructive) {
-                    service.stop()
-                    monitor.stopMonitoring()
-                    status = "停止しました"
+
+                    Button(role: .destructive) {
+                        service.stop()
+                        monitor.stopMonitoring()
+                        status = "停止しました"
+                    } label: {
+                        Label("停止", systemImage: "stop.fill")
+                    }
                 }
             }
 
             Section {
-                Button("別パターン") {
+                Button {
                     intent = service.withNewSeed(intent)
                     generateAndPlay()
+                } label: {
+                    Label("別パターン", systemImage: "shuffle")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
                 }
-                .font(.headline)
                 .disabled(isBusy)
+                .listRowBackground(Color.accentColor.opacity(0.12))
+            } footer: {
+                Text("同じ雰囲気のまま、別のフレーズやリズムを試します。")
             }
 
             Section("あとから調整") {
@@ -351,7 +447,7 @@ struct ResultView: View {
 
     private var lengthLabel: String {
         if intent.soundType == .bgm {
-            return Catalog.BGMLength(rawValue: intent.lengthId)?.displayName ?? intent.lengthId
+            return Catalog.BGMLength.resolve(intent.lengthId).displayName
         }
         return Catalog.SFXLength(rawValue: intent.lengthId)?.displayName ?? intent.lengthId
     }
@@ -502,8 +598,11 @@ struct LibraryView: View {
     var body: some View {
         List {
             if library.entries.isEmpty {
-                Text("保存した音はまだありません。「結果」画面から保存できます。")
-                    .foregroundStyle(.secondary)
+                ContentUnavailableView(
+                    "保存した音はまだありません",
+                    systemImage: "books.vertical",
+                    description: Text("結果画面から「ライブラリに保存」できます。")
+                )
             } else {
                 ForEach(library.entries) { entry in
                     NavigationLink {
@@ -511,7 +610,7 @@ struct LibraryView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(entry.intent.title)
-                            Text("\(entry.intent.soundType.displayName) · Seed \(entry.intent.seed.map(String.init) ?? "-")")
+                            Text("\(entry.intent.soundType.displayName) · \(Catalog.Mood(rawValue: entry.intent.moodId)?.displayName ?? "") · Seed \(entry.intent.seed.map(String.init) ?? "-")")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -535,7 +634,7 @@ struct SettingsView: View {
     var body: some View {
         List {
             Section("アプリ") {
-                LabeledContent("バージョン", value: "0.3.0 (Phase 3)")
+                LabeledContent("バージョン", value: "0.3.1 (音質・UI改善)")
                 LabeledContent("カタログ", value: "カードバトル MVP")
                 LabeledContent("サンプルレート", value: "44100 Hz")
             }
@@ -545,7 +644,7 @@ struct SettingsView: View {
                 }
             }
             Section("について") {
-                Text("外部AIは使わず、端末内の手続き生成だけで動作します。")
+                Text("外部AIは使わず、端末内の手続き生成だけで動作します。雰囲気は音色・高さ・リズムに強く反映されます。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

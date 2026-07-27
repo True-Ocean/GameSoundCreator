@@ -167,6 +167,43 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(recipe.params.bars, 16)
     }
 
+    func testBrightAndDarkMoodsDifferAudibly() throws {
+        let bright = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "bright",
+            lengthId: "bars_8",
+            seed: 42
+        )
+        let dark = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "dark",
+            lengthId: "bars_8",
+            seed: 42
+        )
+        let engine = BGMEngine()
+        let mapper = IntentMapper()
+        guard case .bgm(var bRecipe) = try mapper.map(bright),
+              case .bgm(var dRecipe) = try mapper.map(dark) else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(bRecipe.params.key.mode, .major)
+        XCTAssertEqual(dRecipe.params.key.mode, .minor)
+        XCTAssertGreaterThan(bRecipe.params.brightness, dRecipe.params.brightness)
+        XCTAssertGreaterThan(bRecipe.params.tempoBpm, dRecipe.params.tempoBpm)
+
+        // Same tempo/bars so buffer lengths match for a fair waveform distance check.
+        bRecipe.params.tempoBpm = 120
+        dRecipe.params.tempoBpm = 120
+        let a = engine.generate(bRecipe)
+        let b = engine.generate(dRecipe)
+        XCTAssertEqual(a.frameLength, b.frameLength)
+        XCTAssertTrue(hasEnergy(a))
+        XCTAssertTrue(hasEnergy(b))
+        XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.03)
+    }
+
     func testCatalogAvailableGenresOnlyCardBattle() {
         let available = Catalog.availableGenres.filter(\.isAvailable)
         XCTAssertEqual(available.map(\.id), ["card_battle"])

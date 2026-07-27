@@ -155,6 +155,15 @@ public enum Catalog {
             case .dark: return "暗い"
             }
         }
+
+        public var hint: String {
+            switch self {
+            case .bright: return "高め・軽やか・長調寄り"
+            case .neutral: return "シーン標準のバランス"
+            case .tense: return "ドラム強め・短調・迫力"
+            case .dark: return "低め・静か・くすんだ音色"
+            }
+        }
     }
 
     public enum BGMLength: String, CaseIterable, Sendable {

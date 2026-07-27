@@ -61,6 +61,7 @@
 |----------|------|
 | [docs/SPEC.md](docs/SPEC.md) | 製品仕様書（要件・画面・エンジン・非機能・収益化） |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | フェーズ別ロードマップとマイルストーン |
+| [docs/SOUND_PLAN.md](docs/SOUND_PLAN.md) | 音質ゴールと音色・合成の実装方針（Phase 3.5） |
 | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | 開発環境セットアップ（Xcode / Apple ID / Cursor） |
 
 ---

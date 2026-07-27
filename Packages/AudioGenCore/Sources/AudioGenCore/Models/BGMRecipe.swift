@@ -74,6 +74,10 @@ public struct BGMParams: Codable, Equatable, Sendable {
     public var density: Float
     public var energy: Float
     public var melody: Bool
+    /// Catalog mood id: bright / neutral / tense / dark — drives audible style in the engine.
+    public var moodId: String
+    /// 0 = dark/muted, 1 = bright/open. Derived from mood but overridable in fine-tune later.
+    public var brightness: Float
 
     public init(
         seed: UInt64 = 1,
@@ -82,7 +86,9 @@ public struct BGMParams: Codable, Equatable, Sendable {
         bars: Int = 8,
         density: Float = 0.5,
         energy: Float = 0.5,
-        melody: Bool = true
+        melody: Bool = true,
+        moodId: String = "neutral",
+        brightness: Float = 0.5
     ) {
         self.seed = seed
         self.tempoBpm = min(160, max(80, tempoBpm))
@@ -91,6 +97,8 @@ public struct BGMParams: Codable, Equatable, Sendable {
         self.density = min(1, max(0, density))
         self.energy = min(1, max(0, energy))
         self.melody = melody
+        self.moodId = moodId
+        self.brightness = min(1, max(0, brightness))
     }
 }
 

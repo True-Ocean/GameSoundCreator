@@ -1,7 +1,6 @@
 import Foundation
 
 enum MusicTheory {
-    /// Major: W W H W W W H / Minor natural: W H W W H W W
     static func scaleIntervals(mode: MusicalMode) -> [Int] {
         switch mode {
         case .major: return [0, 2, 4, 5, 7, 9, 11]
@@ -20,7 +19,6 @@ enum MusicTheory {
         440.0 * pow(2.0, (Double(midi) - 69.0) / 12.0)
     }
 
-    /// Triad degrees for Roman-ish steps: 0=I/i, 1=II/ii, ...
     static func triadMIDI(root: Int, chordDegree: Int, octave: Int, mode: MusicalMode) -> [Int] {
         let d0 = chordDegree
         return [
@@ -30,25 +28,68 @@ enum MusicTheory {
         ]
     }
 
-    /// Progressions as scale degrees (0-based).
-    static func progression(for preset: BGMPreset, pick: Int) -> [Int] {
-        switch preset {
-        case .battleNormal:
-            let options: [[Int]] = [
-                [0, 5, 2, 6], // i VI III VII
-                [0, 3, 4, 0], // i iv V i
-                [0, 5, 0, 4], // i VI i V
-                [0, 6, 5, 4], // i VII VI V
-            ]
-            return options[pick % options.count]
-        case .menuMain:
-            let options: [[Int]] = [
-                [0, 4, 5, 3], // I V vi IV
+    /// More options; mood biases which family is preferred.
+    static func progression(for preset: BGMPreset, moodId: String, pick: Int) -> [Int] {
+        let mood = Catalog.Mood(rawValue: moodId) ?? .neutral
+        let pool: [[Int]]
+        switch (preset, mood) {
+        case (.battleNormal, .bright):
+            pool = [
+                [0, 4, 5, 3],
                 [0, 5, 3, 4],
                 [0, 3, 4, 0],
                 [0, 4, 0, 5],
+                [0, 5, 4, 3],
+                [0, 2, 3, 4],
             ]
-            return options[pick % options.count]
+        case (.battleNormal, .dark):
+            pool = [
+                [0, 5, 2, 6],
+                [0, 6, 5, 4],
+                [0, 3, 6, 0],
+                [0, 5, 6, 4],
+                [0, 6, 3, 4],
+                [0, 2, 5, 6],
+            ]
+        case (.battleNormal, .tense):
+            pool = [
+                [0, 5, 2, 6],
+                [0, 3, 4, 0],
+                [0, 5, 0, 4],
+                [0, 6, 5, 4],
+                [0, 4, 6, 5],
+                [0, 5, 4, 6],
+            ]
+        case (.battleNormal, _):
+            pool = [
+                [0, 5, 2, 6],
+                [0, 3, 4, 0],
+                [0, 5, 0, 4],
+                [0, 6, 5, 4],
+                [0, 4, 5, 3],
+                [0, 5, 3, 4],
+            ]
+        case (.menuMain, .dark), (.menuMain, .tense):
+            pool = [
+                [0, 5, 3, 4],
+                [0, 3, 4, 0],
+                [0, 5, 0, 4],
+                [0, 6, 5, 3],
+                [0, 3, 5, 4],
+                [0, 4, 3, 0],
+            ]
+        case (.menuMain, _):
+            pool = [
+                [0, 4, 5, 3],
+                [0, 5, 3, 4],
+                [0, 3, 4, 0],
+                [0, 4, 0, 5],
+                [0, 5, 4, 3],
+                [0, 2, 5, 3],
+                [0, 4, 5, 0],
+                [0, 3, 5, 4],
+            ]
         }
+        return pool[pick % pool.count]
     }
 }
