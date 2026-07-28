@@ -4,7 +4,12 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    @AppStorage("appThemeID") private var themeIDRaw = AppThemeID.system.rawValue
     @State private var selectedTab = 0
+
+    private var theme: AppTheme {
+        AppTheme.resolved(AppThemeID(rawValue: themeIDRaw) ?? .system)
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -24,6 +29,9 @@ struct ContentView: View {
             .tabItem { Label("設定", systemImage: "gearshape.fill") }
             .tag(2)
         }
+        .environment(\.appTheme, theme)
+        .tint(theme.accent)
+        .preferredColorScheme(theme.colorScheme)
         .onChange(of: selectedTab) { _, _ in
             stopAllPlayback()
         }
@@ -48,6 +56,7 @@ func hapticMedium() {
 // MARK: - Shared UI
 
 private struct CreateCard: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     let subtitle: String
     let systemImage: String
@@ -56,22 +65,22 @@ private struct CreateCard: View {
         HStack(spacing: 16) {
             Image(systemName: systemImage)
                 .font(.title2)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(theme.accent)
                 .frame(width: 44, height: 44)
-                .background(Color.accentColor.opacity(0.15))
+                .background(theme.accent.opacity(0.15))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.primaryText)
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             Spacer()
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.secondaryText.opacity(0.7))
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
@@ -79,6 +88,7 @@ private struct CreateCard: View {
 }
 
 private struct CatalogChoiceRow: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     let subtitle: String?
     let selected: Bool
@@ -89,17 +99,17 @@ private struct CatalogChoiceRow: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(theme.primaryText)
                     if let subtitle {
                         Text(subtitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.secondaryText)
                     }
                 }
                 Spacer()
                 if selected {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(theme.accent)
                         .fontWeight(.semibold)
                 }
             }
@@ -111,15 +121,18 @@ private struct CatalogChoiceRow: View {
 /// Wraps children as whole units (no mid-segment line breaks).
 /// Idle = outlined (same as Stop). Playing = filled accent.
 private struct PlayButtonChrome: ViewModifier {
+    @Environment(\.appTheme) private var theme
     let isPlaying: Bool
 
     func body(content: Content) -> some View {
         if isPlaying {
-            content.buttonStyle(.borderedProminent)
+            content
+                .buttonStyle(.borderedProminent)
+                .tint(theme.accent)
         } else {
             content
                 .buttonStyle(.bordered)
-                .tint(.accentColor)
+                .tint(theme.accent)
         }
     }
 }
@@ -178,6 +191,7 @@ private struct CreateDestination: Hashable {
 }
 
 struct HomeView: View {
+    @Environment(\.appTheme) private var theme
     @State private var genreId = Catalog.Genre.cardBattle.rawValue
     @State private var path = NavigationPath()
     @State private var pressedType: SoundType?
@@ -190,16 +204,9 @@ struct HomeView: View {
         NavigationStack(path: $path) {
             List {
                 Section {
-                    VStack(spacing: 4) {
-                        Text("レトロゲーム")
-                        Text("サウンドクリエイター")
-                    }
-                    .font(.largeTitle.weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                    HomeHeroTitle()
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 20, leading: 16, bottom: 12, trailing: 16))
                 }
 
                 Section {
@@ -225,12 +232,14 @@ struct HomeView: View {
                         )
                     } else {
                         Text("対応ジャンルを選んでください。")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.secondaryText)
                     }
                 }
+                .themedListRowBackground(theme)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
+            .themedListBackground(theme)
             .navigationDestination(for: CreateDestination.self) { dest in
                 StudioView(genreId: dest.genreId, soundType: dest.soundType)
             }
@@ -265,9 +274,61 @@ struct HomeView: View {
     }
 }
 
+/// Home brand lockup — accent-led, lightly animated, theme-aware.
+private struct HomeHeroTitle: View {
+    @Environment(\.appTheme) private var theme
+    @State private var appeared = false
+
+    private let barHeights: [CGFloat] = [10, 18, 12, 22, 14]
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(Array(barHeights.enumerated()), id: \.offset) { index, height in
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(theme.accent.opacity(appeared ? 0.95 - Double(index) * 0.08 : 0.25))
+                        .frame(width: 4, height: appeared ? height : height * 0.35)
+                }
+            }
+            .frame(height: 24)
+            .accessibilityHidden(true)
+
+            VStack(spacing: 8) {
+                Text("レトロゲーム")
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .tracking(6)
+                    .foregroundStyle(theme.accent)
+
+                Text("サウンドクリエイター")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .tracking(2)
+                    .foregroundStyle(theme.primaryText)
+            }
+            .multilineTextAlignment(.center)
+
+            Capsule(style: .continuous)
+                .fill(theme.accent.opacity(0.7))
+                .frame(width: appeared ? 56 : 16, height: 2)
+                .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+        .opacity(appeared ? 1 : 0.35)
+        .offset(y: appeared ? 0 : 8)
+        .onAppear {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                appeared = true
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("レトロゲーム サウンドクリエイター")
+    }
+}
+
 // MARK: - Studio
 
 struct StudioView: View {
+    @Environment(\.appTheme) private var theme
     let soundType: SoundType
     private let autoPlay: Bool
     private let initialIntent: SoundIntent?
@@ -369,14 +430,14 @@ struct StudioView: View {
 
             VStack(spacing: 8) {
                 ProgressView(value: monitor.progress)
-                    .tint(.accentColor)
+                    .tint(theme.accent)
                 HStack {
                     Text(monitor.currentTimeText)
                     Spacer()
                     Text(monitor.durationText)
                 }
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             }
 
             Spacer(minLength: 14)
@@ -398,7 +459,7 @@ struct StudioView: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(.bordered)
-                .tint(.accentColor)
+                .tint(theme.accent)
                 .disabled(isBusy)
             }
 
@@ -452,20 +513,20 @@ struct StudioView: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(.bordered)
-                .tint(.accentColor)
+                .tint(theme.accent)
                 .disabled(isBusy)
                 .opacity(patternFlash ? 0.7 : 1)
                 .animation(.easeOut(duration: 0.12), value: patternFlash)
 
                 Text("Seed \(seed)")
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
         .padding(.bottom, 12)
-        .background(Color(.systemGroupedBackground))
+        .background(theme.background)
         .navigationTitle(titleText)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -545,7 +606,7 @@ struct StudioView: View {
         let label = HStack(spacing: 6) {
             if isBusy {
                 ProgressView()
-                    .tint(monitor.isPlaying ? Color.white : Color.accentColor)
+                    .tint(monitor.isPlaying ? Color.white : theme.accent)
             } else {
                 Image(systemName: "play.fill")
             }
@@ -560,7 +621,7 @@ struct StudioView: View {
             playNow(newSeed: false)
         } label: {
             label
-                .foregroundStyle(monitor.isPlaying ? Color.white : Color.accentColor)
+                .foregroundStyle(monitor.isPlaying ? Color.white : theme.accent)
         }
         .disabled(isBusy)
         .modifier(PlayButtonChrome(isPlaying: monitor.isPlaying))
@@ -576,13 +637,13 @@ struct StudioView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("条件設定")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                     ConditionsWrap {
                         ForEach(Array(conditionsSegments.enumerated()), id: \.offset) { index, segment in
                             let isLast = index == conditionsSegments.count - 1
                             Text(isLast ? segment : "\(segment)、 ")
                                 .font(.subheadline)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(theme.primaryText)
                                 .fixedSize(horizontal: true, vertical: false)
                         }
                     }
@@ -590,11 +651,11 @@ struct StudioView: View {
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.secondaryText.opacity(0.7))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -626,7 +687,7 @@ struct StudioView: View {
             }
             Text(step != nil ? String(format: "%.0f", value.wrappedValue) : String(format: "%.2f", value.wrappedValue))
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
                 .frame(width: 36, alignment: .trailing)
         }
     }
@@ -692,7 +753,7 @@ struct StudioView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("雰囲気")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                     Picker("雰囲気", selection: moodBinding) {
                         ForEach(Catalog.moods) { item in
                             Text(item.displayName).tag(item.id)
@@ -705,7 +766,7 @@ struct StudioView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("長さ")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                     Picker("長さ", selection: lengthBinding) {
                         ForEach(soundType == .bgm ? Catalog.bgmLengths : Catalog.sfxLengths) { item in
                             Text(item.displayName).tag(item.id)
@@ -715,8 +776,10 @@ struct StudioView: View {
                 }
                 .padding(.vertical, 2)
             }
+            .themedListRowBackground(theme)
             .navigationTitle("条件設定")
             .navigationBarTitleDisplayMode(.inline)
+            .themedListBackground(theme)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完了") { showConditionsSheet = false }
@@ -748,9 +811,11 @@ struct StudioView: View {
                     conditionsPath.removeLast()
                 }
             }
+            .themedListRowBackground(theme)
         }
         .navigationTitle("シーン")
         .navigationBarTitleDisplayMode(.inline)
+        .themedListBackground(theme)
     }
 
     private var instrumentPickerList: some View {
@@ -766,9 +831,11 @@ struct StudioView: View {
                     conditionsPath.removeLast()
                 }
             }
+            .themedListRowBackground(theme)
         }
         .navigationTitle("音色")
         .navigationBarTitleDisplayMode(.inline)
+        .themedListBackground(theme)
     }
 
     private var purposePickerList: some View {
@@ -788,11 +855,13 @@ struct StudioView: View {
                             conditionsPath.removeLast()
                         }
                     }
+                    .themedListRowBackground(theme)
                 }
             }
         }
         .navigationTitle("用途")
         .navigationBarTitleDisplayMode(.inline)
+        .themedListBackground(theme)
     }
 
     private func applyScene(_ id: String) {
@@ -998,13 +1067,15 @@ private enum LibrarySort: String, CaseIterable, Identifiable {
 }
 
 struct LibraryView: View {
-    @State private var library = LibraryStore.shared
+    @Environment(\.appTheme) private var theme
+    @ObservedObject private var library = LibraryStore.shared
     @State private var sort: LibrarySort = .newest
     @State private var playingId: UUID?
     @State private var isBusy = false
     @State private var errorText: String?
     @State private var showError = false
-    @State private var editMode: EditMode = .inactive
+    /// Explicit delete mode (system EditMode conflicts with play + NavigationLink rows).
+    @State private var isDeleting = false
 
     private var service: GenerationService { GenerationService.shared }
 
@@ -1037,19 +1108,36 @@ struct LibraryView: View {
                     systemImage: "books.vertical",
                     description: Text("制作画面右上の共有メニューから保存できます。")
                 )
+                .themedListRowBackground(theme)
             } else {
                 ForEach(sortedEntries) { entry in
                     libraryRow(entry)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: !isDeleting) {
+                            Button(role: .destructive) {
+                                remove(entry)
+                            } label: {
+                                Label("削除", systemImage: "trash")
+                            }
+                        }
                 }
-                .onDelete(perform: delete)
+                .themedListRowBackground(theme)
             }
         }
         .navigationTitle("ライブラリ")
-        .environment(\.editMode, $editMode)
+        .themedListBackground(theme)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 if !library.entries.isEmpty {
-                    EditButton()
+                    Button(isDeleting ? "完了" : "削除") {
+                        hapticLight()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isDeleting.toggle()
+                            if isDeleting {
+                                service.stop()
+                                playingId = nil
+                            }
+                        }
+                    }
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -1063,6 +1151,7 @@ struct LibraryView: View {
                     } label: {
                         Label("並び替え", systemImage: "arrow.up.arrow.down")
                     }
+                    .disabled(isDeleting)
                 }
             }
         }
@@ -1070,6 +1159,10 @@ struct LibraryView: View {
         .onDisappear {
             service.stop()
             playingId = nil
+            isDeleting = false
+        }
+        .onChange(of: library.entries.isEmpty) { _, empty in
+            if empty { isDeleting = false }
         }
         .alert("エラー", isPresented: $showError) {
             Button("OK", role: .cancel) {}
@@ -1081,19 +1174,32 @@ struct LibraryView: View {
     @ViewBuilder
     private func libraryRow(_ entry: LibraryEntry) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            Button {
-                hapticMedium()
-                togglePlayback(entry)
-            } label: {
-                Image(systemName: playingId == entry.id ? "stop.circle.fill" : "play.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(Color.accentColor)
+            if isDeleting {
+                Button {
+                    hapticMedium()
+                    remove(entry)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("削除")
+            } else {
+                Button {
+                    hapticMedium()
+                    togglePlayback(entry)
+                } label: {
+                    Image(systemName: playingId == entry.id ? "stop.circle.fill" : "play.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(theme.accent)
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+                .accessibilityLabel(playingId == entry.id ? "停止" : "再生")
             }
-            .buttonStyle(.plain)
-            .disabled(isBusy || editMode.isEditing)
-            .accessibilityLabel(playingId == entry.id ? "停止" : "再生")
 
-            if editMode.isEditing {
+            if isDeleting {
                 libraryText(entry)
             } else {
                 NavigationLink {
@@ -1105,17 +1211,15 @@ struct LibraryView: View {
         }
         .padding(.vertical, 2)
         .contextMenu {
-            Button {
-                togglePlayback(entry)
-            } label: {
-                Label(playingId == entry.id ? "停止" : "再生", systemImage: playingId == entry.id ? "stop.fill" : "play.fill")
+            if !isDeleting {
+                Button {
+                    togglePlayback(entry)
+                } label: {
+                    Label(playingId == entry.id ? "停止" : "再生", systemImage: playingId == entry.id ? "stop.fill" : "play.fill")
+                }
             }
             Button(role: .destructive) {
-                try? library.remove(entry)
-                if playingId == entry.id {
-                    service.stop()
-                    playingId = nil
-                }
+                remove(entry)
             } label: {
                 Label("削除", systemImage: "trash")
             }
@@ -1126,13 +1230,13 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(entry.intent.title)
                 .font(.body.weight(.medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.primaryText)
             Text(subtitle(entry))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             Text(dateText(entry.savedAt))
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.secondaryText.opacity(0.75))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1147,14 +1251,14 @@ struct LibraryView: View {
         date.formatted(date: .abbreviated, time: .shortened)
     }
 
-    private func delete(at offsets: IndexSet) {
-        let targets = offsets.map { sortedEntries[$0] }
-        for entry in targets {
-            try? library.remove(entry)
-            if playingId == entry.id {
-                service.stop()
-                playingId = nil
-            }
+    private func remove(_ entry: LibraryEntry) {
+        if playingId == entry.id {
+            service.stop()
+            playingId = nil
+        }
+        try? library.remove(entry)
+        if library.entries.isEmpty {
+            isDeleting = false
         }
     }
 
@@ -1179,25 +1283,68 @@ struct LibraryView: View {
 // MARK: - Settings
 
 struct SettingsView: View {
+    @Environment(\.appTheme) private var theme
+    @AppStorage("appThemeID") private var themeIDRaw = AppThemeID.system.rawValue
+
     var body: some View {
         List {
+            Section("見た目") {
+                ForEach(AppThemeID.allCases) { option in
+                    Button {
+                        hapticLight()
+                        themeIDRaw = option.rawValue
+                    } label: {
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(AppTheme.resolved(option).accent)
+                                .frame(width: 14, height: 14)
+                                .overlay {
+                                    Circle().strokeBorder(theme.secondaryText.opacity(0.35), lineWidth: 0.5)
+                                }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.title)
+                                    .foregroundStyle(theme.primaryText)
+                                Text(option.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(theme.secondaryText)
+                            }
+                            Spacer()
+                            if themeIDRaw == option.rawValue {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(theme.accent)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .themedListRowBackground(theme)
+
             Section("アプリ") {
                 LabeledContent("バージョン", value: "0.3.4 (UI磨き)")
                 LabeledContent("カタログ", value: "カードバトル MVP")
                 LabeledContent("サンプルレート", value: "44100 Hz")
             }
+            .themedListRowBackground(theme)
+
             Section("開発用") {
                 NavigationLink("旧スタジオ (SE/BGM 詳細)") {
                     LegacyStudioView()
                 }
             }
+            .themedListRowBackground(theme)
+
             Section("について") {
                 Text("外部AIは使わず、端末内の手続き生成だけで動作します。")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
+            .themedListRowBackground(theme)
         }
         .navigationTitle("設定")
+        .themedListBackground(theme)
     }
 }
 

@@ -16,10 +16,10 @@ struct LibraryEntry: Codable, Identifiable, Equatable {
 }
 
 @MainActor
-final class LibraryStore {
+final class LibraryStore: ObservableObject {
     static let shared = LibraryStore()
 
-    private(set) var entries: [LibraryEntry] = []
+    @Published private(set) var entries: [LibraryEntry] = []
     private let fileName = "library.json"
 
     private var fileURL: URL {
