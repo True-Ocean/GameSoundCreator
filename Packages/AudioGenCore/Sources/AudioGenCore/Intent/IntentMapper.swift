@@ -150,6 +150,15 @@ public struct IntentMapper: Sendable {
         recipe.params.moodId = mood.rawValue
         recipe.params.bars = length.barCount
         recipe.params.seed = seed
+
+        let instrument: Catalog.Instrument
+        if let id = intent.instrumentId, !id.isEmpty {
+            instrument = Catalog.Instrument.resolve(id)
+        } else {
+            instrument = Catalog.Instrument.defaultFor(scene: scene)
+        }
+        recipe.params.instrumentId = instrument.rawValue
+
         return recipe
     }
 }

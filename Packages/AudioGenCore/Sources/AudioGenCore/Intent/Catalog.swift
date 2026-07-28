@@ -166,6 +166,47 @@ public enum Catalog {
         }
     }
 
+    /// BGM 音色プリセット（Phase 3.5）。SE では未使用。
+    public enum Instrument: String, CaseIterable, Sendable {
+        case leadSynth = "lead_synth"
+        case piano = "piano"
+        case pad = "pad"
+        case bass = "bass"
+
+        public var displayName: String {
+            switch self {
+            case .leadSynth: return "シンセリード"
+            case .piano: return "ピアノ風"
+            case .pad: return "パッド"
+            case .bass: return "ベース"
+            }
+        }
+
+        public var hint: String {
+            switch self {
+            case .leadSynth: return "キビキビしたメロディ向き。戦闘に合う"
+            case .piano: return "アタックのはっきりした鍵盤風。メニュー向き"
+            case .pad: return "ゆっくり広がる厚み。雰囲気・敗北寄り"
+            case .bass: return "低音を前面に。土台を強調"
+            }
+        }
+
+        public var isAvailable: Bool { true }
+
+        public static func resolve(_ id: String?) -> Instrument {
+            guard let id, let value = Instrument(rawValue: id) else { return .leadSynth }
+            return value
+        }
+
+        public static func defaultFor(scene: BGMScene) -> Instrument {
+            switch scene {
+            case .battleNormal, .battleBoss: return .leadSynth
+            case .menuMain, .resultWin: return .piano
+            case .resultLose: return .pad
+            }
+        }
+    }
+
     public enum BGMLength: String, CaseIterable, Sendable {
         /// Musical phrase lengths (4/4). Always a multiple of a 4-bar progression cycle.
         case bars8 = "bars_8"
@@ -249,8 +290,21 @@ public enum Catalog {
         }
     }
 
+    /// Stable order for SE purpose browsing.
+    public static let sfxPurposeGroupOrder = ["UI", "カード", "戦闘", "結果"]
+
+    public static func sfxPurposes(in group: String) -> [SFXPurpose] {
+        SFXPurpose.allCases.filter { $0.isAvailable && $0.group == group }
+    }
+
     public static var moods: [Item] {
         Mood.allCases.map { Item(id: $0.rawValue, displayName: $0.displayName, isAvailable: true) }
+    }
+
+    public static var instruments: [Item] {
+        Instrument.allCases.filter(\.isAvailable).map {
+            Item(id: $0.rawValue, displayName: $0.displayName, isAvailable: true)
+        }
     }
 
     public static var bgmLengths: [Item] {

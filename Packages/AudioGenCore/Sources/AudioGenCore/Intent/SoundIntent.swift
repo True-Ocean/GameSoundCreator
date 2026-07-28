@@ -22,6 +22,8 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
     public var purposeId: String?
     public var moodId: String
     public var lengthId: String
+    /// BGM only. Ignored for SFX. Defaults by scene when empty.
+    public var instrumentId: String?
     public var seed: UInt64?
 
     public var id: String {
@@ -31,6 +33,7 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
             sceneId ?? purposeId ?? "",
             moodId,
             lengthId,
+            instrumentId ?? "",
             seed.map(String.init) ?? "nil",
         ].joined(separator: "|")
     }
@@ -42,6 +45,7 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
         purposeId: String? = nil,
         moodId: String = Catalog.Mood.neutral.rawValue,
         lengthId: String = "",
+        instrumentId: String? = nil,
         seed: UInt64? = nil
     ) {
         self.version = 1
@@ -53,7 +57,25 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
         self.lengthId = lengthId.isEmpty
             ? (soundType == .bgm ? Catalog.BGMLength.bars16.rawValue : Catalog.SFXLength.medium.rawValue)
             : lengthId
+        self.instrumentId = instrumentId
         self.seed = seed
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case version, soundType, genreId, sceneId, purposeId, moodId, lengthId, instrumentId, seed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        soundType = try c.decode(SoundType.self, forKey: .soundType)
+        genreId = try c.decode(String.self, forKey: .genreId)
+        sceneId = try c.decodeIfPresent(String.self, forKey: .sceneId)
+        purposeId = try c.decodeIfPresent(String.self, forKey: .purposeId)
+        moodId = try c.decode(String.self, forKey: .moodId)
+        lengthId = try c.decode(String.self, forKey: .lengthId)
+        instrumentId = try c.decodeIfPresent(String.self, forKey: .instrumentId)
+        seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
     }
 
     public var title: String {

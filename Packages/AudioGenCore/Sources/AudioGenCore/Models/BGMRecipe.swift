@@ -78,6 +78,8 @@ public struct BGMParams: Codable, Equatable, Sendable {
     public var moodId: String
     /// 0 = dark/muted, 1 = bright/open. Derived from mood but overridable in fine-tune later.
     public var brightness: Float
+    /// Catalog instrument id: lead_synth / piano / pad / bass.
+    public var instrumentId: String
 
     public init(
         seed: UInt64 = 1,
@@ -88,7 +90,8 @@ public struct BGMParams: Codable, Equatable, Sendable {
         energy: Float = 0.5,
         melody: Bool = true,
         moodId: String = "neutral",
-        brightness: Float = 0.5
+        brightness: Float = 0.5,
+        instrumentId: String = Catalog.Instrument.leadSynth.rawValue
     ) {
         self.seed = seed
         self.tempoBpm = min(160, max(80, tempoBpm))
@@ -99,6 +102,25 @@ public struct BGMParams: Codable, Equatable, Sendable {
         self.melody = melody
         self.moodId = moodId
         self.brightness = min(1, max(0, brightness))
+        self.instrumentId = Catalog.Instrument.resolve(instrumentId).rawValue
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case seed, tempoBpm, key, bars, density, energy, melody, moodId, brightness, instrumentId
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        seed = try c.decode(UInt64.self, forKey: .seed)
+        tempoBpm = min(160, max(80, try c.decode(Int.self, forKey: .tempoBpm)))
+        key = try c.decode(MusicalKey.self, forKey: .key)
+        bars = min(32, max(4, try c.decode(Int.self, forKey: .bars)))
+        density = min(1, max(0, try c.decode(Float.self, forKey: .density)))
+        energy = min(1, max(0, try c.decode(Float.self, forKey: .energy)))
+        melody = try c.decode(Bool.self, forKey: .melody)
+        moodId = try c.decodeIfPresent(String.self, forKey: .moodId) ?? "neutral"
+        brightness = min(1, max(0, try c.decodeIfPresent(Float.self, forKey: .brightness) ?? 0.5))
+        instrumentId = Catalog.Instrument.resolve(try c.decodeIfPresent(String.self, forKey: .instrumentId)).rawValue
     }
 }
 

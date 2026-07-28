@@ -204,6 +204,75 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.03)
     }
 
+    func testIntentMapperDefaultsInstrumentByScene() throws {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "menu_main",
+            moodId: "bright",
+            lengthId: "bars_8",
+            seed: 1
+        )
+        let mapped = try IntentMapper().map(intent)
+        guard case .bgm(let recipe) = mapped else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(recipe.params.instrumentId, Catalog.Instrument.piano.rawValue)
+    }
+
+    func testIntentMapperHonorsExplicitInstrument() throws {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "tense",
+            lengthId: "bars_8",
+            instrumentId: Catalog.Instrument.pad.rawValue,
+            seed: 3
+        )
+        let mapped = try IntentMapper().map(intent)
+        guard case .bgm(let recipe) = mapped else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(recipe.params.instrumentId, "pad")
+    }
+
+    func testPianoAndPadInstrumentsDifferAudibly() throws {
+        let piano = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "neutral",
+            lengthId: "bars_8",
+            instrumentId: "piano",
+            seed: 55
+        )
+        let pad = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "neutral",
+            lengthId: "bars_8",
+            instrumentId: "pad",
+            seed: 55
+        )
+        let mapper = IntentMapper()
+        let engine = BGMEngine()
+        guard case .bgm(let pRecipe) = try mapper.map(piano),
+              case .bgm(let dRecipe) = try mapper.map(pad) else {
+            return XCTFail("expected bgm")
+        }
+        let a = engine.generate(pRecipe)
+        let b = engine.generate(dRecipe)
+        XCTAssertEqual(a.frameLength, b.frameLength)
+        XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.03)
+    }
+
+    func testBGMParamsInstrumentRoundTripDefaultsMissingKey() throws {
+        let json = """
+        {"bars":8,"brightness":0.5,"density":0.5,"energy":0.5,"key":{"mode":"major","root":0},"melody":true,"moodId":"neutral","seed":1,"tempoBpm":120}
+        """
+        let data = Data(json.utf8)
+        let params = try JSONDecoder().decode(BGMParams.self, from: data)
+        XCTAssertEqual(params.instrumentId, Catalog.Instrument.leadSynth.rawValue)
+    }
+
     func testCatalogAvailableGenresOnlyCardBattle() {
         let available = Catalog.availableGenres.filter(\.isAvailable)
         XCTAssertEqual(available.map(\.id), ["card_battle"])

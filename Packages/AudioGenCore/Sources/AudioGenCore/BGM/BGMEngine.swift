@@ -24,12 +24,13 @@ public struct BGMEngine: Sendable {
             moodId: recipe.params.moodId,
             pick: progressionPick
         )
-        let palette = MoodPalette.from(
+        let mood = MoodPalette.from(
             moodId: recipe.params.moodId,
             brightness: recipe.params.brightness,
             energy: recipe.params.energy,
             density: recipe.params.density
         )
+        let instrument = InstrumentPalette.from(instrumentId: recipe.params.instrumentId)
 
         // Drum pattern family from seed (more variety).
         let kickPattern = kickSteps(pick: Int(rng.unit() * 5), every: rng.unit() > 0.5 ? 4 : 8)
@@ -42,6 +43,10 @@ public struct BGMEngine: Sendable {
         let energy = recipe.params.energy
         let density = recipe.params.density
         let key = recipe.params.key
+        let mute = min(0.95, max(0, mood.mute + instrument.muteBias))
+        let chordOctave = max(2, min(6, mood.chordOctave + instrument.chordOctaveBias))
+        let leadOctave = max(3, min(7, mood.leadOctave + instrument.leadOctaveBias))
+        let melodyChance = min(0.95, mood.melodyChance * instrument.melodyChanceScale)
 
         var chordIndex = 0
         for bar in 0..<bars {
@@ -50,13 +55,13 @@ public struct BGMEngine: Sendable {
             let triad = MusicTheory.triadMIDI(
                 root: key.root,
                 chordDegree: chordDegree,
-                octave: palette.chordOctave,
+                octave: chordOctave,
                 mode: key.mode
             )
             let bassRoot = MusicTheory.midi(
                 root: key.root,
                 degree: chordDegree,
-                octave: max(1, palette.chordOctave - 2),
+                octave: max(1, chordOctave - 2),
                 mode: key.mode
             )
             let isFill = fillBars.contains(bar)
@@ -65,13 +70,13 @@ public struct BGMEngine: Sendable {
                 let start = bar * framesPerBar + step * stepFrames
 
                 if kickPattern.contains(step) {
-                    addKick(&samples, at: start, sampleRate: sampleRate, amp: palette.drumKick)
+                    addKick(&samples, at: start, sampleRate: sampleRate, amp: mood.drumKick)
                 }
                 if snarePattern.contains(step) || (isFill && step >= 12 && step % 2 == 0) {
-                    addSnare(&samples, at: start, sampleRate: sampleRate, amp: palette.drumSnare, rng: &rng)
+                    addSnare(&samples, at: start, sampleRate: sampleRate, amp: mood.drumSnare, rng: &rng)
                 }
                 if step % hatEvery == 0 {
-                    addHat(&samples, at: start, sampleRate: sampleRate, amp: palette.drumHat, rng: &rng)
+                    addHat(&samples, at: start, sampleRate: sampleRate, amp: mood.drumHat, rng: &rng)
                 }
 
                 if step % 2 == 0 {
@@ -79,46 +84,56 @@ public struct BGMEngine: Sendable {
                     let note = MusicTheory.midi(
                         root: key.root,
                         degree: chordDegree + walk,
-                        octave: max(1, palette.chordOctave - 2),
+                        octave: max(1, chordOctave - 2),
                         mode: key.mode
                     )
-                    let midi = (step % 8 == 6) ? bassRoot + (key.mode == .major ? 7 : 7) : note
+                    let midi = (step % 8 == 6) ? bassRoot + 7 : note
                     addTone(
                         &samples,
                         at: start,
                         sampleRate: sampleRate,
                         freq: MusicTheory.freq(midi: midi),
-                        duration: Double(stepFrames * 2) / sampleRate * 0.85,
-                        amp: palette.bassAmp * (0.85 + 0.3 * energy),
-                        shape: palette.bassShape,
-                        mute: palette.mute
+                        duration: Double(stepFrames * 2) / sampleRate * 0.85 * instrument.bassDurationScale,
+                        amp: mood.bassAmp * instrument.bassAmpScale * (0.85 + 0.3 * energy),
+                        shape: instrument.bassShape,
+                        mute: mute,
+                        envelope: instrument.bassEnv
                     )
                 }
 
-                // Chords: bright = arpeggio-ish more often; dark = held pads on downbeats
-                let chordHits: Set<Int> = palette.mute > 0.4 ? [0, 8] : (density > 0.55 ? [0, 4, 8, 12] : [0, 8])
+                let chordHits: Set<Int>
+                if instrument.sustainChords || mute > 0.4 {
+                    chordHits = [0, 8]
+                } else if density > 0.55 {
+                    chordHits = [0, 4, 8, 12]
+                } else {
+                    chordHits = [0, 8]
+                }
                 if chordHits.contains(step) {
+                    let chordDur = secondsPerBeat * (instrument.sustainChords || mute > 0.4 ? 1.35 : 0.45)
+                        * instrument.chordDurationScale
                     for (i, midi) in triad.enumerated() {
                         addTone(
                             &samples,
                             at: start,
                             sampleRate: sampleRate,
                             freq: MusicTheory.freq(midi: midi),
-                            duration: secondsPerBeat * (palette.mute > 0.4 ? 1.1 : 0.45),
-                            amp: palette.chordAmp / Float(1 + i) * (0.75 + 0.35 * density),
-                            shape: palette.chordShape,
-                            mute: palette.mute
+                            duration: chordDur,
+                            amp: mood.chordAmp * instrument.chordAmpScale / Float(1 + i) * (0.75 + 0.35 * density),
+                            shape: instrument.chordShape,
+                            mute: mute,
+                            envelope: instrument.chordEnv
                         )
                     }
                 }
 
-                if recipe.params.melody, step % 2 == 0, rng.unit() < palette.melodyChance {
-                    let degreeSpread = palette.mute > 0.4 ? 3 : 6
+                if recipe.params.melody, step % 2 == 0, rng.unit() < melodyChance {
+                    let degreeSpread = mute > 0.4 ? 3 : 6
                     let degree = chordDegree + Int(rng.unit() * Float(degreeSpread))
                     let midi = MusicTheory.midi(
                         root: key.root,
                         degree: degree,
-                        octave: palette.leadOctave,
+                        octave: leadOctave,
                         mode: key.mode
                     )
                     addTone(
@@ -126,10 +141,11 @@ public struct BGMEngine: Sendable {
                         at: start,
                         sampleRate: sampleRate,
                         freq: MusicTheory.freq(midi: midi),
-                        duration: Double(stepFrames) / sampleRate * (0.9 + Double(rng.unit())),
-                        amp: palette.leadAmp,
-                        shape: palette.leadShape,
-                        mute: palette.mute * 0.7
+                        duration: Double(stepFrames) / sampleRate * (0.9 + Double(rng.unit())) * instrument.leadDurationScale,
+                        amp: mood.leadAmp * instrument.leadAmpScale,
+                        shape: instrument.leadShape,
+                        mute: mute * 0.7,
+                        envelope: instrument.leadEnv
                     )
                 }
             }
@@ -233,11 +249,18 @@ public struct BGMEngine: Sendable {
         duration: Double,
         amp: Float,
         shape: WaveShape,
-        mute: Float
+        mute: Float,
+        envelope: ADSR
     ) {
         let length = max(1, Int(duration * sampleRate))
         var phase = 0.0
-        let env = ADSR(attack: 0.01, decay: 0.05, sustain: 0.55, release: min(0.12, duration * 0.35))
+        let release = min(envelope.release, max(0.02, duration * 0.4))
+        let env = ADSR(
+            attack: min(envelope.attack, duration * 0.45),
+            decay: envelope.decay,
+            sustain: envelope.sustain,
+            release: release
+        )
         for i in 0..<length {
             let idx = start + i
             guard idx < samples.count else { break }
