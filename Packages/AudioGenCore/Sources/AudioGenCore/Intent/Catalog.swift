@@ -215,9 +215,9 @@ public enum Catalog {
 
         public var displayName: String {
             switch self {
-            case .bars8: return "短い（8小節）"
-            case .bars16: return "ふつう（16小節）"
-            case .bars24: return "長め（24小節）"
+            case .bars8: return "8小節"
+            case .bars16: return "16小節"
+            case .bars24: return "24小節"
             }
         }
 
