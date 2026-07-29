@@ -46,7 +46,21 @@ public struct BGMEngine: Sendable {
         let mute = min(0.95, max(0, mood.mute + instrument.muteBias))
         let chordOctave = max(2, min(6, mood.chordOctave + instrument.chordOctaveBias))
         let leadOctave = max(3, min(7, mood.leadOctave + instrument.leadOctaveBias))
-        let melodyChance = min(0.95, mood.melodyChance * instrument.melodyChanceScale)
+
+        let melodyPlan = MelodyComposer.compose(
+            bars: bars,
+            progression: progression,
+            density: density,
+            moodId: recipe.params.moodId,
+            melodyEnabled: recipe.params.melody,
+            melodyChanceScale: instrument.melodyChanceScale,
+            seed: recipe.params.seed
+        )
+        var melodyStarts: [Int: [MelodyNote]] = [:]
+        for note in melodyPlan.notes {
+            let key = note.bar * stepsPerBar + note.step
+            melodyStarts[key, default: []].append(note)
+        }
 
         var chordIndex = 0
         for bar in 0..<bars {
@@ -127,26 +141,27 @@ public struct BGMEngine: Sendable {
                     }
                 }
 
-                if recipe.params.melody, step % 2 == 0, rng.unit() < melodyChance {
-                    let degreeSpread = mute > 0.4 ? 3 : 6
-                    let degree = chordDegree + Int(rng.unit() * Float(degreeSpread))
-                    let midi = MusicTheory.midi(
-                        root: key.root,
-                        degree: degree,
-                        octave: leadOctave,
-                        mode: key.mode
-                    )
-                    addTone(
-                        &samples,
-                        at: start,
-                        sampleRate: sampleRate,
-                        freq: MusicTheory.freq(midi: midi),
-                        duration: Double(stepFrames) / sampleRate * (0.9 + Double(rng.unit())) * instrument.leadDurationScale,
-                        amp: mood.leadAmp * instrument.leadAmpScale,
-                        shape: instrument.leadShape,
-                        mute: mute * 0.7,
-                        envelope: instrument.leadEnv
-                    )
+                if let leadNotes = melodyStarts[bar * stepsPerBar + step] {
+                    for lead in leadNotes {
+                        let midi = MusicTheory.midi(
+                            root: key.root,
+                            degree: lead.degree,
+                            octave: leadOctave,
+                            mode: key.mode
+                        )
+                        let durSteps = Double(lead.durationSteps)
+                        addTone(
+                            &samples,
+                            at: start,
+                            sampleRate: sampleRate,
+                            freq: MusicTheory.freq(midi: midi),
+                            duration: Double(stepFrames) / sampleRate * durSteps * 0.92 * instrument.leadDurationScale,
+                            amp: mood.leadAmp * instrument.leadAmpScale * lead.velocity,
+                            shape: instrument.leadShape,
+                            mute: mute * 0.7,
+                            envelope: instrument.leadEnv
+                        )
+                    }
                 }
             }
         }

@@ -96,23 +96,16 @@ extension EnvironmentValues {
 
 extension View {
     /// Applies branded list chrome when a custom theme is selected.
-    @ViewBuilder
+    /// Avoid `@ViewBuilder` if/else branching here — it can break
+    /// `navigationDestination` resolution in surrounding `NavigationStack`s.
     func themedListBackground(_ theme: AppTheme) -> some View {
-        if theme.id == .system {
-            self
-        } else {
-            self
-                .scrollContentBackground(.hidden)
-                .background(theme.background)
-        }
+        let hideScroll = theme.id != .system
+        return self
+            .scrollContentBackground(hideScroll ? .hidden : .automatic)
+            .background(hideScroll ? theme.background : Color.clear)
     }
 
-    @ViewBuilder
     func themedListRowBackground(_ theme: AppTheme) -> some View {
-        if theme.id == .system {
-            self
-        } else {
-            self.listRowBackground(theme.panel)
-        }
+        self.listRowBackground(theme.id == .system ? Color(.secondarySystemGroupedBackground) : theme.panel)
     }
 }

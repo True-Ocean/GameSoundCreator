@@ -60,6 +60,7 @@ private struct CreateCard: View {
     let title: String
     let subtitle: String
     let systemImage: String
+    var showsChevron: Bool = true
 
     var body: some View {
         HStack(spacing: 16) {
@@ -78,9 +79,11 @@ private struct CreateCard: View {
                     .foregroundStyle(theme.secondaryText)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.secondaryText.opacity(0.7))
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.secondaryText.opacity(0.7))
+            }
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
@@ -194,7 +197,6 @@ struct HomeView: View {
     @Environment(\.appTheme) private var theme
     @State private var genreId = Catalog.Genre.cardBattle.rawValue
     @State private var path = NavigationPath()
-    @State private var pressedType: SoundType?
 
     private var selectedGenreAvailable: Bool {
         Catalog.Genre(rawValue: genreId)?.isAvailable == true
@@ -252,28 +254,11 @@ struct HomeView: View {
         subtitle: String,
         systemImage: String
     ) -> some View {
-        Button {
-            guard pressedType == nil else { return }
-            hapticMedium()
-            withAnimation(.easeOut(duration: 0.12)) {
-                pressedType = type
-            }
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(120))
-                path.append(CreateDestination(soundType: type, genreId: genreId))
-                pressedType = nil
-            }
-        } label: {
-            CreateCard(title: title, subtitle: subtitle, systemImage: systemImage)
-                .opacity(pressedType == type ? 0.55 : 1)
-                .scaleEffect(pressedType == type ? 0.98 : 1)
-                .animation(.easeOut(duration: 0.12), value: pressedType)
+        NavigationLink(value: CreateDestination(soundType: type, genreId: genreId)) {
+            CreateCard(title: title, subtitle: subtitle, systemImage: systemImage, showsChevron: false)
         }
-        .buttonStyle(.plain)
-        .disabled(pressedType != nil)
     }
 }
-
 /// Home brand lockup — accent-led, lightly animated, theme-aware.
 private struct HomeHeroTitle: View {
     @Environment(\.appTheme) private var theme
@@ -351,7 +336,7 @@ struct StudioView: View {
     @State private var exportURL: URL?
     @State private var showShareSheet = false
     @State private var showConditionsEditor = false
-    @State private var conditionsPath = NavigationPath()
+    @State private var conditionsRoute: ConditionsRoute?
     @State private var draftSceneId = Catalog.BGMScene.battleNormal.rawValue
     @State private var draftPurposeGroup = "戦闘"
     @State private var draftPurposeId = Catalog.SFXPurpose.attackLight.rawValue
@@ -363,6 +348,8 @@ struct StudioView: View {
     @State private var patternFlash = false
     @State private var suppressFineTuneReact = false
     @State private var fineTuneTask: Task<Void, Never>?
+    @State private var playTask: Task<Void, Never>?
+    @State private var showGeneratingOverlay = false
 
     @State private var monitor = PlaybackMonitor()
     @State private var library = LibraryStore.shared
@@ -580,6 +567,7 @@ struct StudioView: View {
         }
         .onDisappear {
             fineTuneTask?.cancel()
+            playTask?.cancel()
             service.stop()
             monitor.stopMonitoring()
         }
@@ -600,7 +588,33 @@ struct StudioView: View {
                     .zIndex(1)
             }
         }
+        .overlay {
+            if showGeneratingOverlay {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .tint(theme.accent)
+                            .scaleEffect(1.15)
+                        Text("BGM生成中…")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.primaryText)
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 22)
+                    .background(theme.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(theme.secondaryText.opacity(0.2), lineWidth: 1)
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(2)
+            }
+        }
         .animation(.easeOut(duration: 0.2), value: showConditionsEditor)
+        .animation(.easeOut(duration: 0.15), value: showGeneratingOverlay)
         .onChange(of: sfxPitch) { _, _ in scheduleFineTune() }
         .onChange(of: sfxTimbre) { _, _ in scheduleFineTune() }
         .onChange(of: sfxIntensity) { _, _ in scheduleFineTune() }
@@ -726,69 +740,24 @@ struct StudioView: View {
     }
 
     private var conditionsEditorCard: some View {
-        NavigationStack(path: $conditionsPath) {
-            List {
-                if soundType == .bgm {
-                    NavigationLink(value: ConditionsRoute.scene) {
-                        LabeledContent("シーン", value: Catalog.BGMScene(rawValue: draftSceneId)?.displayName ?? draftSceneId)
-                    }
-                    .listRowBackground(theme.panel)
-                    NavigationLink(value: ConditionsRoute.instrument) {
-                        LabeledContent("音色", value: Catalog.Instrument.resolve(draftInstrumentId).displayName)
-                    }
-                    .listRowBackground(theme.panel)
-                } else {
-                    NavigationLink(value: ConditionsRoute.purpose) {
-                        let purpose = Catalog.SFXPurpose(rawValue: draftPurposeId)
-                        LabeledContent(
-                            "用途",
-                            value: purpose.map { "\($0.group) / \($0.displayName)" } ?? draftPurposeId
-                        )
-                    }
-                    .listRowBackground(theme.panel)
-                }
+        VStack(spacing: 0) {
+            conditionsEditorHeader
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("雰囲気")
-                        .font(.subheadline)
-                        .foregroundStyle(theme.secondaryText)
-                    Picker("雰囲気", selection: $draftMoodId) {
-                        ForEach(Catalog.moods) { item in
-                            Text(item.displayName).tag(item.id)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                .padding(.vertical, 2)
-                .listRowBackground(theme.panel)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("長さ")
-                        .font(.subheadline)
-                        .foregroundStyle(theme.secondaryText)
-                    Picker("長さ", selection: $draftLengthId) {
-                        ForEach(soundType == .bgm ? Catalog.bgmLengths : Catalog.sfxLengths) { item in
-                            Text(item.displayName).tag(item.id)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                .padding(.vertical, 2)
-                .listRowBackground(theme.panel)
-            }
-            .scrollContentBackground(.hidden)
-            .background(theme.panel)
-            .navigationTitle("条件設定")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") {
-                        hapticLight()
-                        cancelConditionsEditor()
-                    }
+            Group {
+                switch conditionsRoute {
+                case .none:
+                    conditionsRootList
+                case .scene:
+                    draftScenePickerList
+                case .instrument:
+                    draftInstrumentPickerList
+                case .purpose:
+                    draftPurposePickerList
                 }
             }
-            .safeAreaInset(edge: .bottom) {
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if conditionsRoute == nil {
                 Button {
                     hapticMedium()
                     applyConditionsAndPlay()
@@ -806,16 +775,6 @@ struct StudioView: View {
                 .padding(.bottom, 12)
                 .background(theme.panel)
             }
-            .navigationDestination(for: ConditionsRoute.self) { route in
-                switch route {
-                case .scene:
-                    draftScenePickerList
-                case .instrument:
-                    draftInstrumentPickerList
-                case .purpose:
-                    draftPurposePickerList
-                }
-            }
         }
         .background(theme.panel)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -824,6 +783,106 @@ struct StudioView: View {
                 .strokeBorder(theme.secondaryText.opacity(0.2), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+    }
+
+    private var conditionsEditorHeader: some View {
+        ZStack {
+            Text(conditionsEditorTitle)
+                .font(.headline)
+
+            HStack {
+                if conditionsRoute != nil {
+                    Button {
+                        hapticLight()
+                        conditionsRoute = nil
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("戻る")
+                        }
+                    }
+                } else {
+                    Button("キャンセル") {
+                        hapticLight()
+                        cancelConditionsEditor()
+                    }
+                }
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(theme.panel)
+    }
+
+    private var conditionsEditorTitle: String {
+        switch conditionsRoute {
+        case .none: return "条件設定"
+        case .scene: return "シーン"
+        case .instrument: return "音色"
+        case .purpose: return "用途"
+        }
+    }
+
+    private var conditionsRootList: some View {
+        List {
+            if soundType == .bgm {
+                Button {
+                    conditionsRoute = .scene
+                } label: {
+                    LabeledContent("シーン", value: Catalog.BGMScene(rawValue: draftSceneId)?.displayName ?? draftSceneId)
+                }
+                .listRowBackground(theme.panel)
+
+                Button {
+                    conditionsRoute = .instrument
+                } label: {
+                    LabeledContent("音色", value: Catalog.Instrument.resolve(draftInstrumentId).displayName)
+                }
+                .listRowBackground(theme.panel)
+            } else {
+                Button {
+                    conditionsRoute = .purpose
+                } label: {
+                    let purpose = Catalog.SFXPurpose(rawValue: draftPurposeId)
+                    LabeledContent(
+                        "用途",
+                        value: purpose.map { "\($0.group) / \($0.displayName)" } ?? draftPurposeId
+                    )
+                }
+                .listRowBackground(theme.panel)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("雰囲気")
+                    .font(.subheadline)
+                    .foregroundStyle(theme.secondaryText)
+                Picker("雰囲気", selection: $draftMoodId) {
+                    ForEach(Catalog.moods) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(.vertical, 2)
+            .listRowBackground(theme.panel)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("長さ")
+                    .font(.subheadline)
+                    .foregroundStyle(theme.secondaryText)
+                Picker("長さ", selection: $draftLengthId) {
+                    ForEach(soundType == .bgm ? Catalog.bgmLengths : Catalog.sfxLengths) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(.vertical, 2)
+            .listRowBackground(theme.panel)
+        }
+        .scrollContentBackground(.hidden)
+        .background(theme.panel)
     }
 
     private var draftScenePickerList: some View {
@@ -835,15 +894,13 @@ struct StudioView: View {
                     selected: draftSceneId == item.id
                 ) {
                     applyDraftScene(item.id)
-                    conditionsPath.removeLast()
+                    conditionsRoute = nil
                 }
                 .listRowBackground(theme.panel)
             }
         }
         .scrollContentBackground(.hidden)
         .background(theme.panel)
-        .navigationTitle("シーン")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var draftInstrumentPickerList: some View {
@@ -855,15 +912,13 @@ struct StudioView: View {
                     selected: draftInstrumentId == item.id
                 ) {
                     draftInstrumentId = item.id
-                    conditionsPath.removeLast()
+                    conditionsRoute = nil
                 }
                 .listRowBackground(theme.panel)
             }
         }
         .scrollContentBackground(.hidden)
         .background(theme.panel)
-        .navigationTitle("音色")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var draftPurposePickerList: some View {
@@ -879,7 +934,7 @@ struct StudioView: View {
                             draftPurposeGroup = group
                             draftPurposeId = purpose.rawValue
                             draftLengthId = purpose.defaultLength.rawValue
-                            conditionsPath.removeLast()
+                            conditionsRoute = nil
                         }
                         .listRowBackground(theme.panel)
                     }
@@ -888,8 +943,6 @@ struct StudioView: View {
         }
         .scrollContentBackground(.hidden)
         .background(theme.panel)
-        .navigationTitle("用途")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func openConditionsEditor() {
@@ -899,12 +952,12 @@ struct StudioView: View {
         draftMoodId = moodId
         draftLengthId = lengthId
         draftInstrumentId = instrumentId
-        conditionsPath = NavigationPath()
+        conditionsRoute = nil
         showConditionsEditor = true
     }
 
     private func cancelConditionsEditor() {
-        conditionsPath = NavigationPath()
+        conditionsRoute = nil
         showConditionsEditor = false
     }
 
@@ -917,7 +970,7 @@ struct StudioView: View {
         instrumentId = draftInstrumentId
         catalogDirty = true
         exportURL = nil
-        conditionsPath = NavigationPath()
+        conditionsRoute = nil
         showConditionsEditor = false
         // Immediate apply — no debounce, so the button feels like the commit.
         playNow(newSeed: false)
@@ -976,22 +1029,56 @@ struct StudioView: View {
     }
 
     private func playNow(newSeed: Bool) {
+        playTask?.cancel()
+        playTask = Task { @MainActor in
+            await playNowAsync(newSeed: newSeed)
+        }
+    }
+
+    private func playNowAsync(newSeed: Bool) async {
         if newSeed {
             seed = UInt64.random(in: 1...999_999)
             catalogDirty = true
         }
-        run {
-            let intent = currentIntent()
-            let needsGenerate = mapped == nil || catalogDirty || newSeed
+        let intent = currentIntent()
+        let needsGenerate = mapped == nil || catalogDirty || newSeed
+        let showOverlay = soundType == .bgm && needsGenerate
+
+        isBusy = true
+        if showOverlay {
+            showGeneratingOverlay = true
+            // Allow the overlay to paint before heavy work.
+            await Task.yield()
+        }
+        defer {
+            isBusy = false
+            showGeneratingOverlay = false
+        }
+
+        do {
             if needsGenerate {
-                let (mappedRecipe, _) = try service.generate(intent)
-                mapped = mappedRecipe
-                syncFineTuneFromMapped(mappedRecipe)
+                if soundType == .bgm {
+                    let (mappedRecipe, _) = try await service.generateAsync(intent)
+                    guard !Task.isCancelled else { return }
+                    mapped = mappedRecipe
+                    syncFineTuneFromMapped(mappedRecipe)
+                } else {
+                    let (mappedRecipe, _) = try service.generate(intent)
+                    guard !Task.isCancelled else { return }
+                    mapped = mappedRecipe
+                    syncFineTuneFromMapped(mappedRecipe)
+                }
                 catalogDirty = false
             }
+            guard !Task.isCancelled else { return }
             try service.playLast(loop: loopEnabled && soundType == .bgm)
             let duration = mapped?.durationSeconds ?? 1
             monitor.start(duration: duration, looping: loopEnabled && soundType == .bgm)
+        } catch is CancellationError {
+            return
+        } catch {
+            errorText = error.localizedDescription
+            showError = true
         }
     }
 
@@ -1015,9 +1102,35 @@ struct StudioView: View {
             current = .bgm(recipe)
         }
         mapped = current
-        run {
-            try service.play(mapped: current, intent: currentIntent(), loop: loopEnabled && soundType == .bgm)
-            monitor.start(duration: current.durationSeconds, looping: loopEnabled && soundType == .bgm)
+        let intent = currentIntent()
+        playTask?.cancel()
+        playTask = Task { @MainActor in
+            isBusy = true
+            let showOverlay = soundType == .bgm
+            if showOverlay {
+                showGeneratingOverlay = true
+                await Task.yield()
+            }
+            defer {
+                isBusy = false
+                showGeneratingOverlay = false
+            }
+            do {
+                if soundType == .bgm {
+                    _ = await service.generateMappedAsync(current, intent: intent)
+                } else {
+                    _ = service.generate(mapped: current, intent: intent)
+                }
+                guard !Task.isCancelled else { return }
+                try service.playLast(loop: loopEnabled && soundType == .bgm)
+                monitor.start(
+                    duration: current.durationSeconds,
+                    looping: loopEnabled && soundType == .bgm
+                )
+            } catch {
+                errorText = error.localizedDescription
+                showError = true
+            }
         }
     }
 

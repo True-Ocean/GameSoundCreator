@@ -67,6 +67,69 @@ public final class GenerationService {
         player.stop()
     }
 
+    /// Initializes engines and audio session so the first studio open is snappy.
+    /// Synthesis probe runs off the main actor; safe during launch UI.
+    public func warmup() async {
+        await Self.warmupEnginesInBackground()
+        await Task.yield()
+        try? activatePlaybackSession()
+        stop()
+        lastBuffer = nil
+        lastMapped = nil
+        lastIntent = nil
+        lastExportURL = nil
+    }
+
+    /// Probe synthesis fully off the main actor (does not touch `shared` state).
+    nonisolated private static func warmupEnginesInBackground() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let recipe = SFXRecipe.make(category: .uiTap, seed: 1, durationMs: 80)
+                _ = SFXEngine().generate(recipe)
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Maps on the caller (main actor), synthesizes off the main actor.
+    public func generateAsync(_ intent: SoundIntent) async throws -> (MappedRecipe, AVAudioPCMBuffer) {
+        let started = Date()
+        let mapped = try mapper.map(intent)
+        let buffer = await synthesizeAsync(mapped)
+        lastGenerationSeconds = Date().timeIntervalSince(started)
+        lastIntent = intent
+        lastMapped = mapped
+        lastBuffer = buffer
+        return (mapped, buffer)
+    }
+
+    /// Synthesizes a resolved recipe off the main actor, then stores it for play/export.
+    public func generateMappedAsync(_ mapped: MappedRecipe, intent: SoundIntent? = nil) async -> AVAudioPCMBuffer {
+        let started = Date()
+        let buffer = await synthesizeAsync(mapped)
+        lastGenerationSeconds = Date().timeIntervalSince(started)
+        if let intent { lastIntent = intent }
+        lastMapped = mapped
+        lastBuffer = buffer
+        return buffer
+    }
+
+    private func synthesizeAsync(_ mapped: MappedRecipe) async -> AVAudioPCMBuffer {
+        // AVAudioPCMBuffer is not Sendable; hop via a global queue + continuation.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let buffer: AVAudioPCMBuffer
+                switch mapped {
+                case .sfx(let recipe):
+                    buffer = SFXEngine().generate(recipe)
+                case .bgm(let recipe):
+                    buffer = BGMEngine().generate(recipe)
+                }
+                continuation.resume(returning: buffer)
+            }
+        }
+    }
+
     @discardableResult
     public func exportLastToDocuments() throws -> URL {
         guard let mapped = lastMapped, let buffer = lastBuffer else {

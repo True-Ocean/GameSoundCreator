@@ -278,6 +278,83 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(available.map(\.id), ["card_battle"])
     }
 
+    func testMelodyComposerIsDeterministic() {
+        let progression = [0, 5, 2, 6]
+        let a = MelodyComposer.compose(
+            bars: 8,
+            progression: progression,
+            density: 0.55,
+            moodId: "tense",
+            melodyEnabled: true,
+            melodyChanceScale: 1.0,
+            seed: 12345
+        )
+        let b = MelodyComposer.compose(
+            bars: 8,
+            progression: progression,
+            density: 0.55,
+            moodId: "tense",
+            melodyEnabled: true,
+            melodyChanceScale: 1.0,
+            seed: 12345
+        )
+        XCTAssertEqual(a, b)
+        XCTAssertFalse(a.notes.isEmpty)
+    }
+
+    func testMelodyComposerRepeatsMotifEveryOtherCycle() {
+        let progression = [0, 5, 2, 6]
+        let plan = MelodyComposer.compose(
+            bars: 8,
+            progression: progression,
+            density: 0.5,
+            moodId: "neutral",
+            melodyEnabled: true,
+            melodyChanceScale: 1.15,
+            seed: 99
+        )
+        XCTAssertGreaterThanOrEqual(plan.motifBars, 2)
+        let span = plan.motifBars * 2
+        let first = plan.notes.filter { $0.bar == 0 }.map { ($0.step, $0.degree - progression[0]) }
+        let repeatBar = span
+        guard repeatBar < 8 else { return }
+        let again = plan.notes.filter { $0.bar == repeatBar }.map {
+            ($0.step, $0.degree - progression[repeatBar % progression.count])
+        }
+        XCTAssertEqual(first.map(\.0), again.map(\.0), "motif rhythm should repeat")
+        XCTAssertEqual(first.map(\.1), again.map(\.1), "motif contour relative to chord should repeat")
+    }
+
+    func testDifferentSeedsPickDifferentMelodyPlans() {
+        let progression = [0, 4, 5, 3]
+        let plans = (0..<24).map { seed -> MelodyPlan in
+            MelodyComposer.compose(
+                bars: 8,
+                progression: progression,
+                density: 0.6,
+                moodId: "bright",
+                melodyEnabled: true,
+                melodyChanceScale: 1.0,
+                seed: UInt64(seed + 1)
+            )
+        }
+        let signatures = Set(plans.map { "\($0.rhythmId)-\($0.contourId)-\($0.motifBars)" })
+        XCTAssertGreaterThan(signatures.count, 3, "seeds should explore multiple rhythm/contour families")
+    }
+
+    func testMelodyDisabledYieldsNoNotes() {
+        let plan = MelodyComposer.compose(
+            bars: 8,
+            progression: [0, 5, 3, 4],
+            density: 0.8,
+            moodId: "neutral",
+            melodyEnabled: false,
+            melodyChanceScale: 1.0,
+            seed: 7
+        )
+        XCTAssertTrue(plan.notes.isEmpty)
+    }
+
     func testSpaceFXLowpassChangesBrightImpulse() {
         var bright = [Float](repeating: 0, count: 2_048)
         bright[100] = 1
