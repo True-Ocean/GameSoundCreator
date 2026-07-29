@@ -42,7 +42,7 @@
    MVP はカードバトルをフル対応。他ジャンルはカタログ拡充で追加する。
 
 3. **効果音 → 短いループBGM の順**  
-   SEは手続き生成と相性が良く、すぐ自作ゲームに使える。BGMはループ境界とハーモニーの設計が本体。
+   SEは手続き生成と相性が良く、すぐ自作ゲームに使える。BGMはループ境界とハーモニーに加え、**モチーフ型メロディ**で曲らしくする（Phase 3.5）。
 
 4. **ゲーム組み込みは「書き出し優先」**  
    ランタイム合成は後回し。まず WAV/M4A を書き出してカードバトル側に配置する運用で十分。
@@ -61,7 +61,7 @@
 |----------|------|
 | [docs/SPEC.md](docs/SPEC.md) | 製品仕様書（要件・画面・エンジン・非機能・収益化） |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | フェーズ別ロードマップとマイルストーン |
-| [docs/SOUND_PLAN.md](docs/SOUND_PLAN.md) | 音質ゴールと音色・合成の実装方針（Phase 3.5） |
+| [docs/SOUND_PLAN.md](docs/SOUND_PLAN.md) | 音質ゴールと音色・作曲（メロディ）の実装方針（Phase 3.5） |
 | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | 開発環境セットアップ（Xcode / Apple ID / Cursor） |
 
 ---

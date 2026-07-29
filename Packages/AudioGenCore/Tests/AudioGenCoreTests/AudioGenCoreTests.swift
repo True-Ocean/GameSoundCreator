@@ -278,6 +278,51 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(available.map(\.id), ["card_battle"])
     }
 
+    func testSpaceFXLowpassChangesBrightImpulse() {
+        var bright = [Float](repeating: 0, count: 2_048)
+        bright[100] = 1
+        var filtered = bright
+        SpaceFX.applyLowpass(&filtered, cutoffHz: 800, sampleRate: 44_100)
+        XCTAssertNotEqual(filtered[100], bright[100])
+        // Energy spreads forward after the impulse.
+        let tail = filtered[101..<180].map(abs).reduce(0, +)
+        XCTAssertGreaterThan(tail, 0.05)
+    }
+
+    func testSpaceFXReverbIsDeterministicAndMixes() {
+        let dry = (0..<4_096).map { i -> Float in
+            sin(Float(i) * 0.07) * 0.4
+        }
+        var a = dry
+        var b = dry
+        SpaceFX.applyShortReverb(&a, mix: 0.3, decay: 0.45, sampleRate: 44_100)
+        SpaceFX.applyShortReverb(&b, mix: 0.3, decay: 0.45, sampleRate: 44_100)
+        XCTAssertEqual(a, b)
+        var diff: Float = 0
+        for i in 0..<4_096 { diff += abs(a[i] - dry[i]) }
+        XCTAssertGreaterThan(diff / 4_096, 0.001)
+    }
+
+    func testBGMWithSpaceFXIsDeterministic() throws {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "dark",
+            lengthId: "bars_8",
+            instrumentId: "pad",
+            seed: 77
+        )
+        let mapper = IntentMapper()
+        let engine = BGMEngine()
+        guard case .bgm(let recipe) = try mapper.map(intent) else {
+            return XCTFail("expected bgm")
+        }
+        let a = engine.generate(recipe)
+        let b = engine.generate(recipe)
+        assertBuffersEqual(a, b)
+        XCTAssertTrue(hasEnergy(a))
+    }
+
     // MARK: - Helpers
 
     private func assertBuffersEqual(_ a: AVAudioPCMBuffer, _ b: AVAudioPCMBuffer, file: StaticString = #filePath, line: UInt = #line) {

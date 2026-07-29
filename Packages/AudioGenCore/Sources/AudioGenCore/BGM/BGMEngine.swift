@@ -151,6 +151,16 @@ public struct BGMEngine: Sendable {
             }
         }
 
+        let cutoffHz = mood.filterCutoffHz * instrument.filterCutoffScale
+        let reverbMix = min(0.5, max(0, mood.reverbMix + instrument.reverbMixBias))
+        SpaceFX.applyLowpass(&samples, cutoffHz: cutoffHz, sampleRate: sampleRate)
+        SpaceFX.applyShortReverb(
+            &samples,
+            mix: reverbMix,
+            decay: mood.reverbDecay,
+            sampleRate: sampleRate
+        )
+
         applyLoopCrossfade(&samples, fadeSamples: max(1, Int(0.003 * sampleRate)))
         Mastering.apply(&samples, targetPeak: 0.86, drive: 1.05, fadeOutTail: false)
 

@@ -16,6 +16,12 @@ struct MoodPalette: Sendable {
     /// Softens highs by mixing toward sine (0 = full harmonic, 1 = very muted).
     var mute: Float
     var melodyChance: Float
+    /// Post-mix low-pass target (Hz). Lower = darker / less chip-tune.
+    var filterCutoffHz: Double
+    /// Short reverb wet amount (0…~0.4).
+    var reverbMix: Float
+    /// Reverb feedback / tail feel (0…1).
+    var reverbDecay: Float
 
     static func from(moodId: String, brightness: Float, energy: Float, density: Float) -> MoodPalette {
         let mood = Catalog.Mood(rawValue: moodId) ?? .neutral
@@ -34,7 +40,10 @@ struct MoodPalette: Sendable {
                 bassAmp: 0.14,
                 leadAmp: 0.16 + 0.1 * density,
                 mute: 0.05,
-                melodyChance: 0.45 + 0.4 * density
+                melodyChance: 0.45 + 0.4 * density,
+                filterCutoffHz: 4_800 + 1_200 * Double(brightness),
+                reverbMix: 0.10 + 0.06 * brightness,
+                reverbDecay: 0.32
             )
         case .tense:
             return MoodPalette(
@@ -50,7 +59,10 @@ struct MoodPalette: Sendable {
                 bassAmp: 0.22,
                 leadAmp: 0.12 + 0.1 * density,
                 mute: 0.15,
-                melodyChance: 0.35 + 0.35 * density
+                melodyChance: 0.35 + 0.35 * density,
+                filterCutoffHz: 3_600 + 800 * Double(energy),
+                reverbMix: 0.09 + 0.04 * energy,
+                reverbDecay: 0.28
             )
         case .dark:
             return MoodPalette(
@@ -66,7 +78,10 @@ struct MoodPalette: Sendable {
                 bassAmp: 0.24,
                 leadAmp: 0.08 + 0.08 * density,
                 mute: 0.55 + 0.25 * (1 - brightness),
-                melodyChance: 0.15 + 0.25 * density
+                melodyChance: 0.15 + 0.25 * density,
+                filterCutoffHz: 1_600 + 900 * Double(brightness),
+                reverbMix: 0.24 + 0.1 * (1 - brightness),
+                reverbDecay: 0.55
             )
         case .neutral:
             return MoodPalette(
@@ -82,7 +97,10 @@ struct MoodPalette: Sendable {
                 bassAmp: 0.18,
                 leadAmp: 0.1 + 0.1 * density,
                 mute: 0.2,
-                melodyChance: 0.3 + 0.35 * density
+                melodyChance: 0.3 + 0.35 * density,
+                filterCutoffHz: 3_200 + 600 * Double(brightness),
+                reverbMix: 0.16,
+                reverbDecay: 0.4
             )
         }
     }

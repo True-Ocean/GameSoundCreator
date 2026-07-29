@@ -21,6 +21,10 @@ struct InstrumentPalette: Sendable {
     var melodyChanceScale: Float
     /// Prefer sustained chord hits (pads) vs rhythmic stabs.
     var sustainChords: Bool
+    /// Multiplies mood filter cutoff (lower = darker).
+    var filterCutoffScale: Double
+    /// Added to mood reverb mix (clamped later).
+    var reverbMixBias: Float
 
     static func from(instrumentId: String) -> InstrumentPalette {
         switch Catalog.Instrument.resolve(instrumentId) {
@@ -42,7 +46,9 @@ struct InstrumentPalette: Sendable {
                 leadOctaveBias: 0,
                 chordOctaveBias: 0,
                 melodyChanceScale: 1.15,
-                sustainChords: false
+                sustainChords: false,
+                filterCutoffScale: 1.12,
+                reverbMixBias: -0.02
             )
         case .piano:
             return InstrumentPalette(
@@ -62,7 +68,9 @@ struct InstrumentPalette: Sendable {
                 leadOctaveBias: 0,
                 chordOctaveBias: 1,
                 melodyChanceScale: 1.0,
-                sustainChords: false
+                sustainChords: false,
+                filterCutoffScale: 1.0,
+                reverbMixBias: 0.05
             )
         case .pad:
             return InstrumentPalette(
@@ -82,7 +90,9 @@ struct InstrumentPalette: Sendable {
                 leadOctaveBias: -1,
                 chordOctaveBias: 0,
                 melodyChanceScale: 0.55,
-                sustainChords: true
+                sustainChords: true,
+                filterCutoffScale: 0.72,
+                reverbMixBias: 0.14
             )
         case .bass:
             return InstrumentPalette(
@@ -102,7 +112,9 @@ struct InstrumentPalette: Sendable {
                 leadOctaveBias: -1,
                 chordOctaveBias: -1,
                 melodyChanceScale: 0.45,
-                sustainChords: false
+                sustainChords: false,
+                filterCutoffScale: 0.58,
+                reverbMixBias: -0.04
             )
         }
     }
