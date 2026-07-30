@@ -40,6 +40,21 @@ public enum WaveShape: Sendable {
     case triangle
 }
 
+/// Two-operator phase-modulation (DX-style simplified FM).
+public struct FMTone: Sendable, Equatable {
+    public var ratio: Double
+    public var index: Double
+
+    public static let off = FMTone(ratio: 1, index: 0)
+
+    public init(ratio: Double, index: Double) {
+        self.ratio = max(0.25, ratio)
+        self.index = max(0, index)
+    }
+
+    public var isActive: Bool { index > 0.0001 }
+}
+
 public enum SynthDSP {
     public static func osc(_ shape: WaveShape, phase: Double) -> Float {
         let p = phase - floor(phase)
@@ -53,6 +68,20 @@ public enum SynthDSP {
         case .triangle:
             return Float(p < 0.5 ? 4 * p - 1 : 3 - 4 * p)
         }
+    }
+
+    /// Carrier oscillator with optional sine modulator (phase modulation).
+    public static func fmOsc(
+        shape: WaveShape,
+        carrierPhase: Double,
+        modulatorPhase: Double,
+        index: Double
+    ) -> Float {
+        guard index > 0.0001 else {
+            return osc(shape, phase: carrierPhase)
+        }
+        let mod = sin(2 * Double.pi * (modulatorPhase - floor(modulatorPhase)))
+        return osc(shape, phase: carrierPhase + index * mod)
     }
 
     public static func softClip(_ x: Float, drive: Float = 1) -> Float {

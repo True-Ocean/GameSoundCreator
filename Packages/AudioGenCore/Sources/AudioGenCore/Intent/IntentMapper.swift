@@ -10,7 +10,7 @@ public enum IntentMappingError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .unsupportedGenre(let id):
-            return "未対応のジャンルです: \(id)"
+            return "未対応のゲームタイプです: \(id)"
         case .missingScene:
             return "BGMのシーンが選ばれていません"
         case .missingPurpose:
@@ -27,7 +27,7 @@ public struct IntentMapper: Sendable {
     public init() {}
 
     public func map(_ intent: SoundIntent) throws -> MappedRecipe {
-        guard intent.genreId == Catalog.Genre.cardBattle.rawValue else {
+        guard let genre = Catalog.Genre(rawValue: intent.genreId), genre.isAvailable else {
             throw IntentMappingError.unsupportedGenre(intent.genreId)
         }
 
@@ -36,7 +36,7 @@ public struct IntentMapper: Sendable {
         case .sfx:
             return .sfx(try mapSFX(intent, seed: seed))
         case .bgm:
-            return .bgm(try mapBGM(intent, seed: seed))
+            return .bgm(try mapBGM(intent, genre: genre, seed: seed))
         }
     }
 
@@ -83,7 +83,7 @@ public struct IntentMapper: Sendable {
         )
     }
 
-    private func mapBGM(_ intent: SoundIntent, seed: UInt64) throws -> BGMRecipe {
+    private func mapBGM(_ intent: SoundIntent, genre: Catalog.Genre, seed: UInt64) throws -> BGMRecipe {
         guard let sceneId = intent.sceneId else { throw IntentMappingError.missingScene }
         guard let scene = Catalog.BGMScene(rawValue: sceneId) else {
             throw IntentMappingError.unknownScene(sceneId)
@@ -92,44 +92,117 @@ public struct IntentMapper: Sendable {
         let mood = Catalog.Mood(rawValue: intent.moodId) ?? scene.defaultMood
         let length = Catalog.BGMLength.resolve(intent.lengthId)
 
-        var recipe: BGMRecipe
+        var recipe = baseRecipe(for: scene, seed: seed)
+        applyMood(&recipe, mood: mood, scene: scene)
+        applyGenre(&recipe, genre: genre, scene: scene)
+
+        recipe.params.moodId = mood.rawValue
+        recipe.params.bars = length.barCount
+        recipe.params.seed = seed
+
+        let instrument: Catalog.Instrument
+        if let id = intent.instrumentId, !id.isEmpty {
+            instrument = Catalog.Instrument.resolve(id)
+        } else {
+            instrument = Catalog.Instrument.defaultFor(scene: scene)
+        }
+        recipe.params.instrumentId = instrument.rawValue
+
+        return recipe
+    }
+
+    private func baseRecipe(for scene: Catalog.BGMScene, seed: UInt64) -> BGMRecipe {
         switch scene {
-        case .menuMain:
-            recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
-        case .battleNormal, .battleBoss:
-            recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
+        case .title, .menuMain, .settings, .shop, .story:
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            switch scene {
+            case .title:
+                recipe.params.energy = 0.5
+                recipe.params.density = 0.55
+                recipe.params.tempoBpm = 112
+            case .settings:
+                recipe.params.energy = 0.3
+                recipe.params.density = 0.35
+                recipe.params.tempoBpm = 100
+            case .shop:
+                recipe.params.energy = 0.45
+                recipe.params.density = 0.6
+                recipe.params.tempoBpm = 118
+                recipe.params.brightness = 0.7
+            case .story:
+                recipe.params.energy = 0.35
+                recipe.params.density = 0.4
+                recipe.params.tempoBpm = 96
+                recipe.params.brightness = 0.4
+            default:
+                break
+            }
+            return recipe
+
+        case .adventure:
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            recipe.params.tempoBpm = 108
+            recipe.params.energy = 0.5
+            recipe.params.density = 0.5
+            recipe.params.key = MusicalKey(root: 7, mode: .major) // G major
+            return recipe
+
+        case .battleNormal, .battleBoss, .battlePinch:
+            var recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
             if scene == .battleBoss {
                 recipe.params.energy = min(1, recipe.params.energy + 0.15)
                 recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 8)
+            } else if scene == .battlePinch {
+                recipe.params.energy = min(1, recipe.params.energy + 0.22)
+                recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 14)
+                recipe.params.density = min(1, recipe.params.density + 0.12)
+                recipe.params.brightness = 0.28
             }
+            return recipe
+
+        case .gachaOrReward:
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            recipe.params.tempoBpm = 126
+            recipe.params.energy = 0.55
+            recipe.params.density = 0.7
+            recipe.params.brightness = 0.85
+            recipe.params.key = MusicalKey(root: 0, mode: .major)
+            return recipe
+
         case .resultWin:
-            recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
             recipe.params.energy = 0.55
             recipe.params.density = 0.75
+            return recipe
+
         case .resultLose:
-            recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
+            var recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
             recipe.params.tempoBpm = 88
             recipe.params.density = 0.3
             recipe.params.energy = 0.35
+            return recipe
         }
+    }
 
-        // Mood owns tonality, tempo feel, brightness, and arrangement weight.
+    private func applyMood(_ recipe: inout BGMRecipe, mood: Catalog.Mood, scene: Catalog.BGMScene) {
+        let isBattle = scene == .battleNormal || scene == .battleBoss || scene == .battlePinch
         switch mood {
         case .bright:
-            recipe.params.key = MusicalKey(root: scene == .battleNormal || scene == .battleBoss ? 0 : recipe.params.key.root, mode: .major)
+            recipe.params.key = MusicalKey(root: isBattle ? 0 : recipe.params.key.root, mode: .major)
             recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 10)
             recipe.params.energy = max(0.3, recipe.params.energy - 0.15)
             recipe.params.density = min(1, recipe.params.density + 0.15)
             recipe.params.brightness = 0.9
             recipe.params.melody = true
         case .neutral:
-            // Keep scene defaults but ensure mode matches a readable center.
-            if scene == .menuMain || scene == .resultWin {
+            if scene == .menuMain || scene == .title || scene == .resultWin || scene == .shop || scene == .gachaOrReward {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .major)
-                recipe.params.brightness = 0.55
-            } else {
+                recipe.params.brightness = max(recipe.params.brightness, 0.55)
+            } else if isBattle || scene == .resultLose || scene == .battlePinch {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .minor)
-                recipe.params.brightness = 0.45
+                recipe.params.brightness = min(recipe.params.brightness, 0.45)
+            } else {
+                recipe.params.brightness = 0.5
             }
         case .tense:
             recipe.params.key = MusicalKey(root: 9, mode: .minor) // A minor center
@@ -146,19 +219,26 @@ public struct IntentMapper: Sendable {
             recipe.params.brightness = 0.12
             recipe.params.melody = true
         }
+    }
 
-        recipe.params.moodId = mood.rawValue
-        recipe.params.bars = length.barCount
-        recipe.params.seed = seed
-
-        let instrument: Catalog.Instrument
-        if let id = intent.instrumentId, !id.isEmpty {
-            instrument = Catalog.Instrument.resolve(id)
-        } else {
-            instrument = Catalog.Instrument.defaultFor(scene: scene)
+    private func applyGenre(_ recipe: inout BGMRecipe, genre: Catalog.Genre, scene: Catalog.BGMScene) {
+        switch genre {
+        case .cardBattle:
+            break
+        case .rpg:
+            recipe.params.tempoBpm = max(80, recipe.params.tempoBpm - 8)
+            recipe.params.energy = max(0.2, recipe.params.energy - 0.08)
+            if scene == .adventure || scene == .story {
+                recipe.params.brightness = min(1, recipe.params.brightness + 0.08)
+            }
+        case .puzzle:
+            recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 6)
+            recipe.params.density = min(1, recipe.params.density + 0.1)
+            recipe.params.energy = max(0.25, recipe.params.energy - 0.12)
+            recipe.params.brightness = min(1, recipe.params.brightness + 0.12)
+            recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .major)
+        case .action, .casual:
+            break
         }
-        recipe.params.instrumentId = instrument.rawValue
-
-        return recipe
     }
 }

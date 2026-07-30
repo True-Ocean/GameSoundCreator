@@ -84,24 +84,47 @@ public struct BGMEngine: Sendable {
                 let start = bar * framesPerBar + step * stepFrames
 
                 if kickPattern.contains(step) {
-                    addKick(&samples, at: start, sampleRate: sampleRate, amp: mood.drumKick)
+                    addKick(
+                        &samples,
+                        at: start,
+                        sampleRate: sampleRate,
+                        amp: mood.drumKick * instrument.drumAmpScale
+                    )
                 }
                 if snarePattern.contains(step) || (isFill && step >= 12 && step % 2 == 0) {
-                    addSnare(&samples, at: start, sampleRate: sampleRate, amp: mood.drumSnare, rng: &rng)
+                    addSnare(
+                        &samples,
+                        at: start,
+                        sampleRate: sampleRate,
+                        amp: mood.drumSnare * instrument.drumAmpScale,
+                        rng: &rng
+                    )
                 }
                 if step % hatEvery == 0 {
-                    addHat(&samples, at: start, sampleRate: sampleRate, amp: mood.drumHat, rng: &rng)
+                    addHat(
+                        &samples,
+                        at: start,
+                        sampleRate: sampleRate,
+                        amp: mood.drumHat * instrument.drumAmpScale * instrument.hatAmpScale,
+                        rng: &rng
+                    )
                 }
 
                 if step % 2 == 0 {
-                    let walk = bassWalk(step: step, pick: Int(recipe.params.seed % 3))
+                    let walk: Int
+                    if instrument.bassRootHeavy {
+                        // Stay near the root; occasional fifth for motion.
+                        walk = (step % 8 == 4) ? 4 : 0
+                    } else {
+                        walk = bassWalk(step: step, pick: Int(recipe.params.seed % 3))
+                    }
                     let note = MusicTheory.midi(
                         root: key.root,
                         degree: chordDegree + walk,
                         octave: max(1, chordOctave - 2),
                         mode: key.mode
                     )
-                    let midi = (step % 8 == 6) ? bassRoot + 7 : note
+                    let midi = (!instrument.bassRootHeavy && step % 8 == 6) ? bassRoot + 7 : note
                     addTone(
                         &samples,
                         at: start,
@@ -111,7 +134,8 @@ public struct BGMEngine: Sendable {
                         amp: mood.bassAmp * instrument.bassAmpScale * (0.85 + 0.3 * energy),
                         shape: instrument.bassShape,
                         mute: mute,
-                        envelope: instrument.bassEnv
+                        envelope: instrument.bassEnv,
+                        fm: instrument.bassFM
                     )
                 }
 
@@ -127,16 +151,19 @@ public struct BGMEngine: Sendable {
                     let chordDur = secondsPerBeat * (instrument.sustainChords || mute > 0.4 ? 1.35 : 0.45)
                         * instrument.chordDurationScale
                     for (i, midi) in triad.enumerated() {
+                        let upperScale = 1 - instrument.chordUpperAtten * Float(i) / Float(max(1, triad.count - 1))
                         addTone(
                             &samples,
                             at: start,
                             sampleRate: sampleRate,
                             freq: MusicTheory.freq(midi: midi),
                             duration: chordDur,
-                            amp: mood.chordAmp * instrument.chordAmpScale / Float(1 + i) * (0.75 + 0.35 * density),
+                            amp: mood.chordAmp * instrument.chordAmpScale * upperScale
+                                * (0.75 + 0.35 * density),
                             shape: instrument.chordShape,
                             mute: mute,
-                            envelope: instrument.chordEnv
+                            envelope: instrument.chordEnv,
+                            fm: instrument.chordFM
                         )
                     }
                 }
@@ -159,7 +186,8 @@ public struct BGMEngine: Sendable {
                             amp: mood.leadAmp * instrument.leadAmpScale * lead.velocity,
                             shape: instrument.leadShape,
                             mute: mute * 0.7,
-                            envelope: instrument.leadEnv
+                            envelope: instrument.leadEnv,
+                            fm: instrument.leadFM
                         )
                     }
                 }
@@ -275,10 +303,12 @@ public struct BGMEngine: Sendable {
         amp: Float,
         shape: WaveShape,
         mute: Float,
-        envelope: ADSR
+        envelope: ADSR,
+        fm: FMTone = .off
     ) {
         let length = max(1, Int(duration * sampleRate))
-        var phase = 0.0
+        var carrierPhase = 0.0
+        var modulatorPhase = 0.0
         let release = min(envelope.release, max(0.02, duration * 0.4))
         let env = ADSR(
             attack: min(envelope.attack, duration * 0.45),
@@ -286,14 +316,26 @@ public struct BGMEngine: Sendable {
             sustain: envelope.sustain,
             release: release
         )
+        let useFM = fm.isActive
         for i in 0..<length {
             let idx = start + i
             guard idx < samples.count else { break }
             let t = Double(i) / sampleRate
-            phase += freq / sampleRate
+            carrierPhase += freq / sampleRate
+            let raw: Float
+            if useFM {
+                modulatorPhase += freq * fm.ratio / sampleRate
+                raw = SynthDSP.fmOsc(
+                    shape: shape,
+                    carrierPhase: carrierPhase,
+                    modulatorPhase: modulatorPhase,
+                    index: fm.index
+                )
+            } else {
+                raw = SynthDSP.osc(shape, phase: carrierPhase)
+            }
+            let soft = SynthDSP.osc(.sine, phase: carrierPhase)
             let e = env.level(at: t, duration: duration)
-            let raw = SynthDSP.osc(shape, phase: phase)
-            let soft = SynthDSP.osc(.sine, phase: phase)
             samples[idx] += SynthDSP.mix(raw, soft, t: mute) * e * amp
         }
     }

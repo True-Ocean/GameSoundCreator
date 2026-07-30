@@ -1,6 +1,6 @@
 import Foundation
 
-/// Timbre / envelope / layer weights for a BGM instrument preset.
+/// Timbre / envelope / FM / layer roles for a BGM instrument preset.
 struct InstrumentPalette: Sendable {
     var chordShape: WaveShape
     var bassShape: WaveShape
@@ -26,31 +26,54 @@ struct InstrumentPalette: Sendable {
     /// Added to mood reverb mix (clamped later).
     var reverbMixBias: Float
 
+    // MARK: Phase 3.5-D — FM + layer roles
+
+    var chordFM: FMTone
+    var bassFM: FMTone
+    var leadFM: FMTone
+    /// Scales kick / snare / hat together.
+    var drumAmpScale: Float
+    /// Extra attenuation on upper chord notes (0 = equal, higher = root-dominant).
+    var chordUpperAtten: Float
+    /// When true, bass walks less and stays nearer the root.
+    var bassRootHeavy: Bool
+    /// Soften hats for pad-like beds.
+    var hatAmpScale: Float
+
     static func from(instrumentId: String) -> InstrumentPalette {
         switch Catalog.Instrument.resolve(instrumentId) {
         case .leadSynth:
+            // Lead is the star: metallic FM on melody, thin chords, solid bass/drums.
             return InstrumentPalette(
                 chordShape: .triangle,
                 bassShape: .saw,
                 leadShape: .square,
-                chordEnv: ADSR(attack: 0.01, decay: 0.08, sustain: 0.45, release: 0.1),
+                chordEnv: ADSR(attack: 0.01, decay: 0.08, sustain: 0.4, release: 0.1),
                 bassEnv: ADSR(attack: 0.005, decay: 0.06, sustain: 0.55, release: 0.08),
-                leadEnv: ADSR(attack: 0.005, decay: 0.05, sustain: 0.5, release: 0.08),
-                chordAmpScale: 0.9,
-                bassAmpScale: 1.0,
-                leadAmpScale: 1.25,
-                chordDurationScale: 0.9,
+                leadEnv: ADSR(attack: 0.004, decay: 0.06, sustain: 0.48, release: 0.09),
+                chordAmpScale: 0.72,
+                bassAmpScale: 1.05,
+                leadAmpScale: 1.45,
+                chordDurationScale: 0.85,
                 bassDurationScale: 0.95,
-                leadDurationScale: 1.05,
-                muteBias: -0.05,
+                leadDurationScale: 1.08,
+                muteBias: -0.08,
                 leadOctaveBias: 0,
                 chordOctaveBias: 0,
-                melodyChanceScale: 1.15,
+                melodyChanceScale: 1.25,
                 sustainChords: false,
-                filterCutoffScale: 1.12,
-                reverbMixBias: -0.02
+                filterCutoffScale: 1.15,
+                reverbMixBias: -0.03,
+                chordFM: FMTone(ratio: 1.0, index: 0.35),
+                bassFM: FMTone(ratio: 0.5, index: 0.25),
+                leadFM: FMTone(ratio: 2.0, index: 1.35),
+                drumAmpScale: 1.05,
+                chordUpperAtten: 0.35,
+                bassRootHeavy: false,
+                hatAmpScale: 1.0
             )
         case .piano:
+            // Plucky FM on lead/chords; balanced band, slightly softer drums.
             return InstrumentPalette(
                 chordShape: .triangle,
                 bassShape: .sine,
@@ -58,63 +81,176 @@ struct InstrumentPalette: Sendable {
                 chordEnv: ADSR(attack: 0.002, decay: 0.22, sustain: 0.12, release: 0.18),
                 bassEnv: ADSR(attack: 0.002, decay: 0.18, sustain: 0.15, release: 0.14),
                 leadEnv: ADSR(attack: 0.001, decay: 0.28, sustain: 0.08, release: 0.2),
-                chordAmpScale: 1.05,
-                bassAmpScale: 0.85,
-                leadAmpScale: 1.15,
+                chordAmpScale: 1.1,
+                bassAmpScale: 0.8,
+                leadAmpScale: 1.2,
                 chordDurationScale: 1.15,
                 bassDurationScale: 1.0,
                 leadDurationScale: 1.25,
-                muteBias: 0.12,
+                muteBias: 0.1,
                 leadOctaveBias: 0,
                 chordOctaveBias: 1,
-                melodyChanceScale: 1.0,
+                melodyChanceScale: 1.05,
                 sustainChords: false,
-                filterCutoffScale: 1.0,
-                reverbMixBias: 0.05
+                filterCutoffScale: 1.02,
+                reverbMixBias: 0.06,
+                chordFM: FMTone(ratio: 3.0, index: 0.55),
+                bassFM: FMTone(ratio: 1.0, index: 0.15),
+                leadFM: FMTone(ratio: 3.5, index: 0.85),
+                drumAmpScale: 0.88,
+                chordUpperAtten: 0.15,
+                bassRootHeavy: true,
+                hatAmpScale: 0.9
             )
         case .pad:
+            // Chords dominate with slow shimmer FM; quiet lead; soft drums/hats.
             return InstrumentPalette(
                 chordShape: .sine,
                 bassShape: .sine,
                 leadShape: .triangle,
-                chordEnv: ADSR(attack: 0.18, decay: 0.25, sustain: 0.75, release: 0.35),
-                bassEnv: ADSR(attack: 0.08, decay: 0.15, sustain: 0.7, release: 0.25),
-                leadEnv: ADSR(attack: 0.12, decay: 0.2, sustain: 0.55, release: 0.3),
-                chordAmpScale: 1.35,
-                bassAmpScale: 0.9,
-                leadAmpScale: 0.7,
-                chordDurationScale: 1.8,
-                bassDurationScale: 1.3,
-                leadDurationScale: 1.4,
-                muteBias: 0.28,
+                chordEnv: ADSR(attack: 0.2, decay: 0.28, sustain: 0.78, release: 0.38),
+                bassEnv: ADSR(attack: 0.1, decay: 0.16, sustain: 0.72, release: 0.28),
+                leadEnv: ADSR(attack: 0.14, decay: 0.22, sustain: 0.5, release: 0.32),
+                chordAmpScale: 1.5,
+                bassAmpScale: 0.85,
+                leadAmpScale: 0.55,
+                chordDurationScale: 1.9,
+                bassDurationScale: 1.35,
+                leadDurationScale: 1.45,
+                muteBias: 0.3,
                 leadOctaveBias: -1,
                 chordOctaveBias: 0,
-                melodyChanceScale: 0.55,
+                melodyChanceScale: 0.42,
                 sustainChords: true,
-                filterCutoffScale: 0.72,
-                reverbMixBias: 0.14
+                filterCutoffScale: 0.7,
+                reverbMixBias: 0.16,
+                chordFM: FMTone(ratio: 1.0, index: 0.7),
+                bassFM: FMTone(ratio: 0.5, index: 0.2),
+                leadFM: FMTone(ratio: 1.5, index: 0.4),
+                drumAmpScale: 0.7,
+                chordUpperAtten: 0.05,
+                bassRootHeavy: true,
+                hatAmpScale: 0.55
             )
         case .bass:
+            // Low end is the star: growly bass FM, thin upper layers, punchy kick.
             return InstrumentPalette(
                 chordShape: .triangle,
                 bassShape: .saw,
                 leadShape: .sine,
-                chordEnv: ADSR(attack: 0.02, decay: 0.1, sustain: 0.35, release: 0.12),
-                bassEnv: ADSR(attack: 0.008, decay: 0.1, sustain: 0.65, release: 0.1),
-                leadEnv: ADSR(attack: 0.01, decay: 0.08, sustain: 0.35, release: 0.1),
-                chordAmpScale: 0.55,
-                bassAmpScale: 1.55,
-                leadAmpScale: 0.55,
-                chordDurationScale: 0.85,
-                bassDurationScale: 1.15,
-                leadDurationScale: 0.85,
-                muteBias: 0.08,
+                chordEnv: ADSR(attack: 0.025, decay: 0.1, sustain: 0.28, release: 0.12),
+                bassEnv: ADSR(attack: 0.006, decay: 0.12, sustain: 0.7, release: 0.11),
+                leadEnv: ADSR(attack: 0.012, decay: 0.08, sustain: 0.3, release: 0.1),
+                chordAmpScale: 0.42,
+                bassAmpScale: 1.75,
+                leadAmpScale: 0.42,
+                chordDurationScale: 0.8,
+                bassDurationScale: 1.2,
+                leadDurationScale: 0.8,
+                muteBias: 0.1,
                 leadOctaveBias: -1,
                 chordOctaveBias: -1,
-                melodyChanceScale: 0.45,
+                melodyChanceScale: 0.32,
                 sustainChords: false,
-                filterCutoffScale: 0.58,
-                reverbMixBias: -0.04
+                filterCutoffScale: 0.55,
+                reverbMixBias: -0.05,
+                chordFM: FMTone(ratio: 1.0, index: 0.2),
+                bassFM: FMTone(ratio: 2.0, index: 0.9),
+                leadFM: FMTone(ratio: 1.0, index: 0.2),
+                drumAmpScale: 1.15,
+                chordUpperAtten: 0.55,
+                bassRootHeavy: true,
+                hatAmpScale: 0.75
+            )
+        case .musicBox:
+            // High tinkly bells: long decay, sparse drums, bright FM partials.
+            return InstrumentPalette(
+                chordShape: .sine,
+                bassShape: .sine,
+                leadShape: .sine,
+                chordEnv: ADSR(attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.35),
+                bassEnv: ADSR(attack: 0.004, decay: 0.2, sustain: 0.12, release: 0.18),
+                leadEnv: ADSR(attack: 0.001, decay: 0.55, sustain: 0.03, release: 0.4),
+                chordAmpScale: 0.85,
+                bassAmpScale: 0.45,
+                leadAmpScale: 1.55,
+                chordDurationScale: 1.4,
+                bassDurationScale: 0.9,
+                leadDurationScale: 1.55,
+                muteBias: 0.2,
+                leadOctaveBias: 1,
+                chordOctaveBias: 1,
+                melodyChanceScale: 1.15,
+                sustainChords: false,
+                filterCutoffScale: 1.25,
+                reverbMixBias: 0.14,
+                chordFM: FMTone(ratio: 3.5, index: 1.1),
+                bassFM: FMTone(ratio: 1.0, index: 0.1),
+                leadFM: FMTone(ratio: 4.0, index: 1.45),
+                drumAmpScale: 0.35,
+                chordUpperAtten: 0.1,
+                bassRootHeavy: true,
+                hatAmpScale: 0.25
+            )
+        case .organ:
+            // Sustained church-like bed: slow attack, rich harmonics, soft drums.
+            return InstrumentPalette(
+                chordShape: .square,
+                bassShape: .saw,
+                leadShape: .square,
+                chordEnv: ADSR(attack: 0.12, decay: 0.18, sustain: 0.82, release: 0.28),
+                bassEnv: ADSR(attack: 0.08, decay: 0.14, sustain: 0.75, release: 0.22),
+                leadEnv: ADSR(attack: 0.1, decay: 0.16, sustain: 0.7, release: 0.24),
+                chordAmpScale: 1.35,
+                bassAmpScale: 0.95,
+                leadAmpScale: 0.95,
+                chordDurationScale: 1.7,
+                bassDurationScale: 1.3,
+                leadDurationScale: 1.4,
+                muteBias: 0.15,
+                leadOctaveBias: 0,
+                chordOctaveBias: 0,
+                melodyChanceScale: 0.7,
+                sustainChords: true,
+                filterCutoffScale: 0.85,
+                reverbMixBias: 0.12,
+                chordFM: FMTone(ratio: 2.0, index: 0.55),
+                bassFM: FMTone(ratio: 1.0, index: 0.3),
+                leadFM: FMTone(ratio: 2.0, index: 0.65),
+                drumAmpScale: 0.55,
+                chordUpperAtten: 0.08,
+                bassRootHeavy: true,
+                hatAmpScale: 0.4
+            )
+        case .guitar:
+            // Bright plucks with mild bite; mid drums; adventure-friendly.
+            return InstrumentPalette(
+                chordShape: .triangle,
+                bassShape: .triangle,
+                leadShape: .saw,
+                chordEnv: ADSR(attack: 0.003, decay: 0.2, sustain: 0.18, release: 0.16),
+                bassEnv: ADSR(attack: 0.005, decay: 0.14, sustain: 0.35, release: 0.12),
+                leadEnv: ADSR(attack: 0.002, decay: 0.24, sustain: 0.12, release: 0.18),
+                chordAmpScale: 1.05,
+                bassAmpScale: 0.9,
+                leadAmpScale: 1.25,
+                chordDurationScale: 1.1,
+                bassDurationScale: 1.0,
+                leadDurationScale: 1.2,
+                muteBias: 0.05,
+                leadOctaveBias: 0,
+                chordOctaveBias: 0,
+                melodyChanceScale: 1.1,
+                sustainChords: false,
+                filterCutoffScale: 1.08,
+                reverbMixBias: 0.04,
+                chordFM: FMTone(ratio: 2.0, index: 0.4),
+                bassFM: FMTone(ratio: 1.0, index: 0.2),
+                leadFM: FMTone(ratio: 2.5, index: 0.75),
+                drumAmpScale: 0.92,
+                chordUpperAtten: 0.2,
+                bassRootHeavy: false,
+                hatAmpScale: 0.85
             )
         }
     }

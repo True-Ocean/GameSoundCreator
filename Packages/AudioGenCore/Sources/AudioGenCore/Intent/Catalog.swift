@@ -16,6 +16,7 @@ public enum Catalog {
         }
     }
 
+    /// ゲームタイプ（BGM の音色・テンポ寄り。旧「ジャンル」）。
     public enum Genre: String, CaseIterable, Sendable {
         case cardBattle = "card_battle"
         case rpg = "rpg"
@@ -33,23 +34,62 @@ public enum Catalog {
             }
         }
 
-        public var isAvailable: Bool { self == .cardBattle }
+        public var hint: String {
+            switch self {
+            case .cardBattle: return "キビキビしたループ。戦闘とメニューのメリハリ"
+            case .rpg: return "ややゆったり。冒険・探索向き"
+            case .puzzle: return "軽快で短いフレーズ寄り"
+            case .action: return "高テンポ・迫力寄り（準備中）"
+            case .casual: return "明るく短いループ寄り（準備中）"
+            }
+        }
+
+        /// BGM スタジオで選べるタイプ。
+        public var isAvailable: Bool {
+            switch self {
+            case .cardBattle, .rpg, .puzzle: return true
+            case .action, .casual: return false
+            }
+        }
     }
 
     public enum BGMScene: String, CaseIterable, Sendable {
+        case title = "title"
         case menuMain = "menu_main"
+        case settings = "settings"
+        case story = "story"
+        case adventure = "adventure"
         case battleNormal = "battle_normal"
         case battleBoss = "battle_boss"
+        case battlePinch = "battle_pinch"
+        case shop = "shop"
+        case gachaOrReward = "gacha_or_reward"
         case resultWin = "result_win"
         case resultLose = "result_lose"
 
         public var displayName: String {
             switch self {
+            case .title: return "タイトル"
             case .menuMain: return "メインメニュー"
-            case .battleNormal: return "通常戦闘"
+            case .settings: return "設定"
+            case .story: return "ストーリー"
+            case .adventure: return "冒険 / 探索"
+            case .battleNormal: return "通常バトル"
             case .battleBoss: return "ボス戦"
+            case .battlePinch: return "ピンチ"
+            case .shop: return "ショップ"
+            case .gachaOrReward: return "ガチャ / 報酬"
             case .resultWin: return "勝利"
             case .resultLose: return "敗北"
+            }
+        }
+
+        public var group: String {
+            switch self {
+            case .title, .menuMain, .settings, .story: return "進行・画面"
+            case .adventure, .battleNormal, .battleBoss, .battlePinch: return "プレイ中"
+            case .shop, .gachaOrReward: return "経済・演出"
+            case .resultWin, .resultLose: return "結果"
             }
         }
 
@@ -57,48 +97,91 @@ public enum Catalog {
 
         public var defaultMood: Mood {
             switch self {
-            case .menuMain: return .bright
-            case .battleNormal, .battleBoss: return .tense
-            case .resultWin: return .bright
+            case .title, .menuMain, .shop, .resultWin, .gachaOrReward: return .bright
+            case .settings, .story, .adventure: return .neutral
+            case .battleNormal, .battleBoss, .battlePinch: return .tense
             case .resultLose: return .dark
             }
         }
 
         public var defaultLength: BGMLength {
             switch self {
-            case .menuMain: return .bars16
-            case .battleNormal, .battleBoss: return .bars16
-            case .resultWin, .resultLose: return .bars8
+            case .title, .resultWin, .resultLose, .gachaOrReward, .settings: return .bars8
+            case .menuMain, .shop, .story, .adventure, .battleNormal, .battleBoss, .battlePinch:
+                return .bars16
             }
         }
     }
 
     public enum SFXPurpose: String, CaseIterable, Sendable {
+        // UI
         case uiTap = "ui_tap"
         case uiConfirm = "ui_confirm"
         case uiCancel = "ui_cancel"
+        case uiBack = "ui_back"
+        case uiSwipe = "ui_swipe"
+        case uiDoubleTap = "ui_double_tap"
+        // カード
         case cardDraw = "card_draw"
         case cardPlay = "card_play"
+        case cardShuffle = "card_shuffle"
+        case cardFlip = "card_flip"
+        case cardDiscard = "card_discard"
+        // バトル
         case attackLight = "attack_light"
         case attackHeavy = "attack_heavy"
-        case skillCast = "skill_cast"
+        case attackSlash = "attack_slash"
+        case attackBash = "attack_bash"
+        case attackBreak = "attack_break"
         case damageTake = "damage_take"
+        case defend = "defend"
+        // 魔法・状態
+        case skillCast = "skill_cast"
+        case magicFire = "magic_fire"
+        case magicIce = "magic_ice"
+        case magicPoison = "magic_poison"
         case heal = "heal"
+        // 動作
+        case moveWalk = "move_walk"
+        case moveRun = "move_run"
+        case moveFly = "move_fly"
+        // ガチャ
+        case gachaSpin = "gacha_spin"
+        case gachaRare = "gacha_rare"
+        // 結果
         case victory = "victory"
         case defeat = "defeat"
 
         public var displayName: String {
             switch self {
-            case .uiTap: return "タップ / ボタン"
-            case .uiConfirm: return "決定"
+            case .uiTap: return "タップ"
+            case .uiConfirm: return "決定 (OK)"
             case .uiCancel: return "キャンセル"
-            case .cardDraw: return "カードドロー"
+            case .uiBack: return "戻る"
+            case .uiSwipe: return "スワイプ"
+            case .uiDoubleTap: return "ダブルタップ"
+            case .cardDraw: return "ドロー"
             case .cardPlay: return "カードを出す"
+            case .cardShuffle: return "シャッフル"
+            case .cardFlip: return "めくる"
+            case .cardDiscard: return "捨てる"
             case .attackLight: return "通常攻撃"
             case .attackHeavy: return "強攻撃"
-            case .skillCast: return "スキル発動"
+            case .attackSlash: return "斬る"
+            case .attackBash: return "叩く"
+            case .attackBreak: return "割る"
             case .damageTake: return "被ダメージ"
-            case .heal: return "回復"
+            case .defend: return "防御"
+            case .skillCast: return "スキル発動"
+            case .magicFire: return "炎魔法"
+            case .magicIce: return "氷魔法"
+            case .magicPoison: return "毒"
+            case .heal: return "癒し / 回復"
+            case .moveWalk: return "歩く"
+            case .moveRun: return "走る"
+            case .moveFly: return "飛ぶ"
+            case .gachaSpin: return "ガチャ回転"
+            case .gachaRare: return "レア演出"
             case .victory: return "勝利"
             case .defeat: return "敗北"
             }
@@ -106,9 +189,13 @@ public enum Catalog {
 
         public var group: String {
             switch self {
-            case .uiTap, .uiConfirm, .uiCancel: return "UI"
-            case .cardDraw, .cardPlay: return "カード"
-            case .attackLight, .attackHeavy, .skillCast, .damageTake, .heal: return "戦闘"
+            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe, .uiDoubleTap: return "UI"
+            case .cardDraw, .cardPlay, .cardShuffle, .cardFlip, .cardDiscard: return "カード"
+            case .attackLight, .attackHeavy, .attackSlash, .attackBash, .attackBreak, .damageTake, .defend:
+                return "バトル"
+            case .skillCast, .magicFire, .magicIce, .magicPoison, .heal: return "魔法・状態"
+            case .moveWalk, .moveRun, .moveFly: return "動作"
+            case .gachaSpin, .gachaRare: return "ガチャ"
             case .victory, .defeat: return "結果"
             }
         }
@@ -117,24 +204,47 @@ public enum Catalog {
 
         public var defaultLength: SFXLength {
             switch self {
-            case .uiTap, .uiConfirm, .uiCancel: return .short
-            case .victory, .defeat, .skillCast, .heal: return .long
-            default: return .medium
+            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe, .uiDoubleTap,
+                 .moveWalk, .moveRun:
+                return .short
+            case .victory, .defeat, .skillCast, .heal, .gachaRare, .magicFire, .magicIce:
+                return .long
+            default:
+                return .medium
             }
         }
 
+        /// 用途ごとに専用エンジンカテゴリ（1:1）。音の作り分けは SFXEngine 側。
         public var category: SFXCategory {
             switch self {
             case .uiTap: return .uiTap
             case .uiConfirm: return .uiConfirm
             case .uiCancel: return .uiCancel
+            case .uiBack: return .uiBack
+            case .uiSwipe: return .uiSwipe
+            case .uiDoubleTap: return .uiDoubleTap
             case .cardDraw: return .cardDraw
             case .cardPlay: return .cardPlay
+            case .cardShuffle: return .cardShuffle
+            case .cardFlip: return .cardFlip
+            case .cardDiscard: return .cardDiscard
             case .attackLight: return .attackLight
             case .attackHeavy: return .attackHeavy
-            case .skillCast: return .skillCast
+            case .attackSlash: return .attackSlash
+            case .attackBash: return .attackBash
+            case .attackBreak: return .attackBreak
             case .damageTake: return .damageTake
+            case .defend: return .defend
+            case .skillCast: return .skillCast
+            case .magicFire: return .magicFire
+            case .magicIce: return .magicIce
+            case .magicPoison: return .magicPoison
             case .heal: return .heal
+            case .moveWalk: return .moveWalk
+            case .moveRun: return .moveRun
+            case .moveFly: return .moveFly
+            case .gachaSpin: return .gachaSpin
+            case .gachaRare: return .gachaRare
             case .victory: return .victory
             case .defeat: return .defeat
             }
@@ -172,6 +282,9 @@ public enum Catalog {
         case piano = "piano"
         case pad = "pad"
         case bass = "bass"
+        case musicBox = "music_box"
+        case organ = "organ"
+        case guitar = "guitar"
 
         public var displayName: String {
             switch self {
@@ -179,6 +292,9 @@ public enum Catalog {
             case .piano: return "ピアノ風"
             case .pad: return "パッド"
             case .bass: return "ベース"
+            case .musicBox: return "オルゴール"
+            case .organ: return "オルガン"
+            case .guitar: return "ギター風"
             }
         }
 
@@ -188,6 +304,9 @@ public enum Catalog {
             case .piano: return "アタックのはっきりした鍵盤風。メニュー向き"
             case .pad: return "ゆっくり広がる厚み。雰囲気・敗北寄り"
             case .bass: return "低音を前面に。土台を強調"
+            case .musicBox: return "高いキラキラのプラック。ショップ・ガチャ向き"
+            case .organ: return "持続する荘厳な響き。ストーリー向き"
+            case .guitar: return "明るめのプラック。冒険・カジュアル向き"
             }
         }
 
@@ -200,9 +319,12 @@ public enum Catalog {
 
         public static func defaultFor(scene: BGMScene) -> Instrument {
             switch scene {
-            case .battleNormal, .battleBoss: return .leadSynth
-            case .menuMain, .resultWin: return .piano
-            case .resultLose: return .pad
+            case .battleNormal, .battleBoss, .battlePinch: return .leadSynth
+            case .title, .menuMain, .resultWin: return .piano
+            case .shop, .gachaOrReward: return .musicBox
+            case .settings, .resultLose: return .pad
+            case .story: return .organ
+            case .adventure: return .guitar
             }
         }
     }
@@ -278,10 +400,20 @@ public enum Catalog {
         }
     }
 
+    public static var selectableGenres: [Genre] {
+        Genre.allCases.filter(\.isAvailable)
+    }
+
     public static var availableBGMScenes: [Item] {
         BGMScene.allCases.filter(\.isAvailable).map {
-            Item(id: $0.rawValue, displayName: $0.displayName, isAvailable: true)
+            Item(id: $0.rawValue, displayName: $0.displayName, isAvailable: true, group: $0.group)
         }
+    }
+
+    public static let bgmSceneGroupOrder = ["進行・画面", "プレイ中", "経済・演出", "結果"]
+
+    public static func bgmScenes(in group: String) -> [BGMScene] {
+        BGMScene.allCases.filter { $0.isAvailable && $0.group == group }
     }
 
     public static var availableSFXPurposes: [Item] {
@@ -291,7 +423,7 @@ public enum Catalog {
     }
 
     /// Stable order for SE purpose browsing.
-    public static let sfxPurposeGroupOrder = ["UI", "カード", "戦闘", "結果"]
+    public static let sfxPurposeGroupOrder = ["UI", "カード", "バトル", "魔法・状態", "動作", "ガチャ", "結果"]
 
     public static func sfxPurposes(in group: String) -> [SFXPurpose] {
         SFXPurpose.allCases.filter { $0.isAvailable && $0.group == group }

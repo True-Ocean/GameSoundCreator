@@ -190,17 +190,11 @@ private struct ConditionsWrap: Layout {
 
 private struct CreateDestination: Hashable {
     let soundType: SoundType
-    let genreId: String
 }
 
 struct HomeView: View {
     @Environment(\.appTheme) private var theme
-    @State private var genreId = Catalog.Genre.cardBattle.rawValue
     @State private var path = NavigationPath()
-
-    private var selectedGenreAvailable: Bool {
-        Catalog.Genre(rawValue: genreId)?.isAvailable == true
-    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -212,30 +206,18 @@ struct HomeView: View {
                 }
 
                 Section {
-                    Picker("ジャンル", selection: $genreId) {
-                        ForEach(Catalog.availableGenres.filter(\.isAvailable)) { item in
-                            Text(item.displayName).tag(item.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-
-                    if selectedGenreAvailable {
-                        createRow(
-                            type: .bgm,
-                            title: "BGMスタジオ",
-                            subtitle: "戦闘・メニューなどのループ曲",
-                            systemImage: "music.note.list"
-                        )
-                        createRow(
-                            type: .sfx,
-                            title: "効果音スタジオ",
-                            subtitle: "攻撃・カード・UIなどの短い音",
-                            systemImage: "waveform"
-                        )
-                    } else {
-                        Text("対応ジャンルを選んでください。")
-                            .foregroundStyle(theme.secondaryText)
-                    }
+                    createRow(
+                        type: .bgm,
+                        title: "BGMスタジオ",
+                        subtitle: "ゲームタイプとシーンからループ曲を作る",
+                        systemImage: "music.note.list"
+                    )
+                    createRow(
+                        type: .sfx,
+                        title: "効果音スタジオ",
+                        subtitle: "UI・カード・バトルなどの短い音",
+                        systemImage: "waveform"
+                    )
                 }
                 .themedListRowBackground(theme)
             }
@@ -243,7 +225,7 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .themedListBackground(theme)
             .navigationDestination(for: CreateDestination.self) { dest in
-                StudioView(genreId: dest.genreId, soundType: dest.soundType)
+                StudioView(soundType: dest.soundType)
             }
         }
     }
@@ -254,7 +236,7 @@ struct HomeView: View {
         subtitle: String,
         systemImage: String
     ) -> some View {
-        NavigationLink(value: CreateDestination(soundType: type, genreId: genreId)) {
+        NavigationLink(value: CreateDestination(soundType: type)) {
             CreateCard(title: title, subtitle: subtitle, systemImage: systemImage, showsChevron: false)
         }
     }
@@ -320,7 +302,7 @@ struct StudioView: View {
 
     @State private var genreId: String
     @State private var sceneId = Catalog.BGMScene.battleNormal.rawValue
-    @State private var purposeGroup = "戦闘"
+    @State private var purposeGroup = "バトル"
     @State private var purposeId = Catalog.SFXPurpose.attackLight.rawValue
     @State private var moodId = Catalog.Mood.tense.rawValue
     @State private var lengthId = Catalog.BGMLength.bars16.rawValue
@@ -337,8 +319,9 @@ struct StudioView: View {
     @State private var showShareSheet = false
     @State private var showConditionsEditor = false
     @State private var conditionsRoute: ConditionsRoute?
+    @State private var draftGenreId = Catalog.Genre.cardBattle.rawValue
     @State private var draftSceneId = Catalog.BGMScene.battleNormal.rawValue
-    @State private var draftPurposeGroup = "戦闘"
+    @State private var draftPurposeGroup = "バトル"
     @State private var draftPurposeId = Catalog.SFXPurpose.attackLight.rawValue
     @State private var draftMoodId = Catalog.Mood.tense.rawValue
     @State private var draftLengthId = Catalog.BGMLength.bars16.rawValue
@@ -364,22 +347,18 @@ struct StudioView: View {
 
     private var service: GenerationService { GenerationService.shared }
 
-    private var genreName: String {
-        Catalog.Genre(rawValue: genreId)?.displayName ?? genreId
-    }
-
     private var titleText: String {
-        let kind = soundType == .bgm ? "BGM" : "効果音"
-        return "\(kind) · \(genreName)"
+        soundType == .bgm ? "BGMスタジオ" : "効果音スタジオ"
     }
 
     private var conditionsSegments: [String] {
         if soundType == .bgm {
+            let genre = Catalog.Genre(rawValue: genreId)?.displayName ?? genreId
             let scene = Catalog.BGMScene(rawValue: sceneId)?.displayName ?? sceneId
             let instrument = Catalog.Instrument.resolve(instrumentId).displayName
             let mood = Catalog.Mood(rawValue: moodId)?.displayName ?? moodId
             let length = Catalog.BGMLength.resolve(lengthId).displayName
-            return [scene, "音色：\(instrument)", "雰囲気：\(mood)", "長さ：\(length)"]
+            return [genre, scene, "音色：\(instrument)", "雰囲気：\(mood)", "長さ：\(length)"]
         } else {
             let purpose = Catalog.SFXPurpose(rawValue: purposeId)
             let purposeLabel = purpose.map { "\($0.group)/\($0.displayName)" } ?? purposeId
@@ -389,11 +368,11 @@ struct StudioView: View {
         }
     }
 
-    init(genreId: String, soundType: SoundType, autoPlay: Bool = false) {
+    init(soundType: SoundType, autoPlay: Bool = false) {
         self.soundType = soundType
         self.autoPlay = autoPlay
         self.initialIntent = nil
-        _genreId = State(initialValue: genreId)
+        _genreId = State(initialValue: Catalog.Genre.cardBattle.rawValue)
         _loopEnabled = State(initialValue: soundType == .bgm)
     }
 
@@ -720,8 +699,10 @@ struct StudioView: View {
     // MARK: Conditions editor (floating draft → apply)
 
     private enum ConditionsRoute: Hashable {
+        case genre
         case scene
         case instrument
+        case purposeCategory
         case purpose
     }
 
@@ -747,10 +728,14 @@ struct StudioView: View {
                 switch conditionsRoute {
                 case .none:
                     conditionsRootList
+                case .genre:
+                    draftGenrePickerList
                 case .scene:
                     draftScenePickerList
                 case .instrument:
                     draftInstrumentPickerList
+                case .purposeCategory:
+                    draftPurposeCategoryPickerList
                 case .purpose:
                     draftPurposePickerList
                 }
@@ -794,7 +779,11 @@ struct StudioView: View {
                 if conditionsRoute != nil {
                     Button {
                         hapticLight()
-                        conditionsRoute = nil
+                        if conditionsRoute == .purpose {
+                            conditionsRoute = .purposeCategory
+                        } else {
+                            conditionsRoute = nil
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -818,8 +807,10 @@ struct StudioView: View {
     private var conditionsEditorTitle: String {
         switch conditionsRoute {
         case .none: return "条件設定"
+        case .genre: return "ゲームタイプ"
         case .scene: return "シーン"
         case .instrument: return "音色"
+        case .purposeCategory: return "カテゴリ"
         case .purpose: return "用途"
         }
     }
@@ -828,9 +819,23 @@ struct StudioView: View {
         List {
             if soundType == .bgm {
                 Button {
+                    conditionsRoute = .genre
+                } label: {
+                    LabeledContent(
+                        "ゲームタイプ",
+                        value: Catalog.Genre(rawValue: draftGenreId)?.displayName ?? draftGenreId
+                    )
+                }
+                .listRowBackground(theme.panel)
+
+                Button {
                     conditionsRoute = .scene
                 } label: {
-                    LabeledContent("シーン", value: Catalog.BGMScene(rawValue: draftSceneId)?.displayName ?? draftSceneId)
+                    let scene = Catalog.BGMScene(rawValue: draftSceneId)
+                    LabeledContent(
+                        "シーン",
+                        value: scene.map { "\($0.group) / \($0.displayName)" } ?? draftSceneId
+                    )
                 }
                 .listRowBackground(theme.panel)
 
@@ -842,12 +847,19 @@ struct StudioView: View {
                 .listRowBackground(theme.panel)
             } else {
                 Button {
+                    conditionsRoute = .purposeCategory
+                } label: {
+                    LabeledContent("カテゴリ", value: draftPurposeGroup)
+                }
+                .listRowBackground(theme.panel)
+
+                Button {
                     conditionsRoute = .purpose
                 } label: {
                     let purpose = Catalog.SFXPurpose(rawValue: draftPurposeId)
                     LabeledContent(
                         "用途",
-                        value: purpose.map { "\($0.group) / \($0.displayName)" } ?? draftPurposeId
+                        value: purpose?.displayName ?? draftPurposeId
                     )
                 }
                 .listRowBackground(theme.panel)
@@ -885,18 +897,40 @@ struct StudioView: View {
         .background(theme.panel)
     }
 
-    private var draftScenePickerList: some View {
+    private var draftGenrePickerList: some View {
         List {
-            ForEach(Catalog.availableBGMScenes) { item in
+            ForEach(Catalog.selectableGenres, id: \.rawValue) { genre in
                 CatalogChoiceRow(
-                    title: item.displayName,
-                    subtitle: nil,
-                    selected: draftSceneId == item.id
+                    title: genre.displayName,
+                    subtitle: genre.hint,
+                    selected: draftGenreId == genre.rawValue
                 ) {
-                    applyDraftScene(item.id)
+                    draftGenreId = genre.rawValue
                     conditionsRoute = nil
                 }
                 .listRowBackground(theme.panel)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(theme.panel)
+    }
+
+    private var draftScenePickerList: some View {
+        List {
+            ForEach(Catalog.bgmSceneGroupOrder, id: \.self) { group in
+                Section(group) {
+                    ForEach(Catalog.bgmScenes(in: group), id: \.rawValue) { scene in
+                        CatalogChoiceRow(
+                            title: scene.displayName,
+                            subtitle: nil,
+                            selected: draftSceneId == scene.rawValue
+                        ) {
+                            applyDraftScene(scene.rawValue)
+                            conditionsRoute = nil
+                        }
+                        .listRowBackground(theme.panel)
+                    }
+                }
             }
         }
         .scrollContentBackground(.hidden)
@@ -921,23 +955,39 @@ struct StudioView: View {
         .background(theme.panel)
     }
 
-    private var draftPurposePickerList: some View {
+    private var draftPurposeCategoryPickerList: some View {
         List {
             ForEach(Catalog.sfxPurposeGroupOrder, id: \.self) { group in
-                Section(group) {
-                    ForEach(Catalog.sfxPurposes(in: group), id: \.rawValue) { purpose in
-                        CatalogChoiceRow(
-                            title: purpose.displayName,
-                            subtitle: nil,
-                            selected: draftPurposeId == purpose.rawValue
-                        ) {
-                            draftPurposeGroup = group
-                            draftPurposeId = purpose.rawValue
-                            draftLengthId = purpose.defaultLength.rawValue
-                            conditionsRoute = nil
-                        }
-                        .listRowBackground(theme.panel)
+                CatalogChoiceRow(
+                    title: group,
+                    subtitle: "\(Catalog.sfxPurposes(in: group).count)件",
+                    selected: draftPurposeGroup == group
+                ) {
+                    applyDraftPurposeGroup(group)
+                    conditionsRoute = .purpose
+                }
+                .listRowBackground(theme.panel)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(theme.panel)
+    }
+
+    private var draftPurposePickerList: some View {
+        List {
+            Section(draftPurposeGroup) {
+                ForEach(Catalog.sfxPurposes(in: draftPurposeGroup), id: \.rawValue) { purpose in
+                    CatalogChoiceRow(
+                        title: purpose.displayName,
+                        subtitle: nil,
+                        selected: draftPurposeId == purpose.rawValue
+                    ) {
+                        draftPurposeGroup = purpose.group
+                        draftPurposeId = purpose.rawValue
+                        draftLengthId = purpose.defaultLength.rawValue
+                        conditionsRoute = nil
                     }
+                    .listRowBackground(theme.panel)
                 }
             }
         }
@@ -946,6 +996,7 @@ struct StudioView: View {
     }
 
     private func openConditionsEditor() {
+        draftGenreId = genreId
         draftSceneId = sceneId
         draftPurposeGroup = purposeGroup
         draftPurposeId = purposeId
@@ -962,6 +1013,7 @@ struct StudioView: View {
     }
 
     private func applyConditionsAndPlay() {
+        genreId = draftGenreId
         sceneId = draftSceneId
         purposeGroup = draftPurposeGroup
         purposeId = draftPurposeId
@@ -985,6 +1037,16 @@ struct StudioView: View {
         }
     }
 
+    private func applyDraftPurposeGroup(_ group: String) {
+        draftPurposeGroup = group
+        let purposes = Catalog.sfxPurposes(in: group)
+        guard let first = purposes.first else { return }
+        if !purposes.contains(where: { $0.rawValue == draftPurposeId }) {
+            draftPurposeId = first.rawValue
+            draftLengthId = first.defaultLength.rawValue
+        }
+    }
+
     // MARK: Debounced updates
 
     private func scheduleFineTune() {
@@ -1004,10 +1066,11 @@ struct StudioView: View {
     private func applyDefaultIfNeeded() {
         guard initialIntent == nil else { return }
         if soundType == .sfx {
-            purposeGroup = "戦闘"
+            purposeGroup = "バトル"
             purposeId = Catalog.SFXPurpose.attackLight.rawValue
             lengthId = Catalog.SFXPurpose.attackLight.defaultLength.rawValue
             moodId = Catalog.Mood.neutral.rawValue
+            genreId = Catalog.Genre.cardBattle.rawValue
         } else if let scene = Catalog.BGMScene(rawValue: sceneId) {
             instrumentId = Catalog.Instrument.defaultFor(scene: scene).rawValue
             moodId = scene.defaultMood.rawValue
@@ -1221,7 +1284,7 @@ private enum LibrarySort: String, CaseIterable, Identifiable {
         switch self {
         case .newest: return "新しい順"
         case .type: return "種類"
-        case .genre: return "ジャンル"
+        case .genre: return "ゲームタイプ"
         }
     }
 }
@@ -1402,9 +1465,19 @@ struct LibraryView: View {
     }
 
     private func subtitle(_ entry: LibraryEntry) -> String {
-        let genre = Catalog.Genre(rawValue: entry.intent.genreId)?.displayName ?? entry.intent.genreId
         let mood = Catalog.Mood(rawValue: entry.intent.moodId)?.displayName ?? entry.intent.moodId
-        return "\(genre) · \(entry.intent.soundType.displayName) · \(mood)"
+        if entry.intent.soundType == .bgm {
+            let genre = Catalog.Genre(rawValue: entry.intent.genreId)?.displayName ?? entry.intent.genreId
+            let scene = Catalog.BGMScene(rawValue: entry.intent.sceneId ?? "")?.displayName
+                ?? entry.intent.sceneId
+                ?? "BGM"
+            return "\(genre) · \(scene) · \(mood)"
+        } else {
+            let purpose = Catalog.SFXPurpose(rawValue: entry.intent.purposeId ?? "")?.displayName
+                ?? entry.intent.purposeId
+                ?? "SE"
+            return "\(purpose) · \(mood)"
+        }
     }
 
     private func dateText(_ date: Date) -> String {

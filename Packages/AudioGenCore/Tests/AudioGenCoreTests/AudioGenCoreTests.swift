@@ -264,6 +264,121 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.03)
     }
 
+    func testFMToneOffIsInactive() {
+        XCTAssertFalse(FMTone.off.isActive)
+        XCTAssertTrue(FMTone(ratio: 2, index: 0.8).isActive)
+    }
+
+    func testFMOscDiffersFromPlainOsc() {
+        let plain = SynthDSP.osc(.sine, phase: 0.13)
+        let fm = SynthDSP.fmOsc(shape: .sine, carrierPhase: 0.13, modulatorPhase: 0.37, index: 1.2)
+        XCTAssertNotEqual(plain, fm)
+        XCTAssertEqual(
+            SynthDSP.fmOsc(shape: .sine, carrierPhase: 0.13, modulatorPhase: 0.37, index: 0),
+            plain
+        )
+    }
+
+    func testLeadAndBassInstrumentsDifferAudibly() throws {
+        let lead = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "tense",
+            lengthId: "bars_8",
+            instrumentId: "lead_synth",
+            seed: 77
+        )
+        let bass = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "tense",
+            lengthId: "bars_8",
+            instrumentId: "bass",
+            seed: 77
+        )
+        let mapper = IntentMapper()
+        let engine = BGMEngine()
+        guard case .bgm(let leadRecipe) = try mapper.map(lead),
+              case .bgm(let bassRecipe) = try mapper.map(bass) else {
+            return XCTFail("expected bgm")
+        }
+        let a = engine.generate(leadRecipe)
+        let b = engine.generate(bassRecipe)
+        XCTAssertEqual(a.frameLength, b.frameLength)
+        XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.04)
+    }
+
+    func testInstrumentPaletteFMAssignments() {
+        let lead = InstrumentPalette.from(instrumentId: "lead_synth")
+        XCTAssertGreaterThan(lead.leadFM.index, lead.chordFM.index)
+        XCTAssertGreaterThan(lead.leadAmpScale, lead.chordAmpScale)
+
+        let pad = InstrumentPalette.from(instrumentId: "pad")
+        XCTAssertGreaterThan(pad.chordAmpScale, pad.leadAmpScale)
+        XCTAssertLessThan(pad.drumAmpScale, 1.0)
+
+        let bass = InstrumentPalette.from(instrumentId: "bass")
+        XCTAssertGreaterThan(bass.bassAmpScale, bass.chordAmpScale)
+        XCTAssertTrue(bass.bassRootHeavy)
+        XCTAssertGreaterThan(bass.bassFM.index, 0.5)
+
+        let musicBox = InstrumentPalette.from(instrumentId: "music_box")
+        XCTAssertGreaterThan(musicBox.leadOctaveBias, 0)
+        XCTAssertGreaterThan(musicBox.leadFM.index, 1.0)
+        XCTAssertLessThan(musicBox.drumAmpScale, 0.5)
+
+        let organ = InstrumentPalette.from(instrumentId: "organ")
+        XCTAssertTrue(organ.sustainChords)
+        XCTAssertGreaterThan(organ.chordEnv.attack, 0.05)
+
+        let guitar = InstrumentPalette.from(instrumentId: "guitar")
+        XCTAssertFalse(guitar.sustainChords)
+        XCTAssertEqual(guitar.leadShape, .saw)
+    }
+
+    func testMusicBoxAndOrganDifferAudibly() throws {
+        let musicBox = SoundIntent(
+            soundType: .bgm,
+            sceneId: "shop",
+            moodId: "bright",
+            lengthId: "bars_8",
+            instrumentId: "music_box",
+            seed: 77
+        )
+        let organ = SoundIntent(
+            soundType: .bgm,
+            sceneId: "shop",
+            moodId: "bright",
+            lengthId: "bars_8",
+            instrumentId: "organ",
+            seed: 77
+        )
+        let mapper = IntentMapper()
+        guard case .bgm(let aRecipe) = try mapper.map(musicBox),
+              case .bgm(let bRecipe) = try mapper.map(organ) else {
+            return XCTFail("expected bgm")
+        }
+        let engine = BGMEngine()
+        let a = engine.generate(aRecipe)
+        let b = engine.generate(bRecipe)
+        XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.03)
+    }
+
+    func testDefaultInstrumentForGachaIsMusicBox() throws {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "gacha_or_reward",
+            moodId: "bright",
+            lengthId: "bars_8",
+            seed: 2
+        )
+        let mapped = try IntentMapper().map(intent)
+        guard case .bgm(let recipe) = mapped else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(recipe.params.instrumentId, Catalog.Instrument.musicBox.rawValue)
+    }
+
     func testBGMParamsInstrumentRoundTripDefaultsMissingKey() throws {
         let json = """
         {"bars":8,"brightness":0.5,"density":0.5,"energy":0.5,"key":{"mode":"major","root":0},"melody":true,"moodId":"neutral","seed":1,"tempoBpm":120}
@@ -273,9 +388,74 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(params.instrumentId, Catalog.Instrument.leadSynth.rawValue)
     }
 
-    func testCatalogAvailableGenresOnlyCardBattle() {
-        let available = Catalog.availableGenres.filter(\.isAvailable)
-        XCTAssertEqual(available.map(\.id), ["card_battle"])
+    func testCatalogAvailableGenresIncludeCoreTypes() {
+        let available = Catalog.availableGenres.filter(\.isAvailable).map(\.id)
+        XCTAssertEqual(available, ["card_battle", "rpg", "puzzle"])
+    }
+
+    func testCatalogBGMScenesAreGrouped() {
+        XCTAssertFalse(Catalog.bgmScenes(in: "進行・画面").isEmpty)
+        XCTAssertFalse(Catalog.bgmScenes(in: "プレイ中").isEmpty)
+        XCTAssertEqual(Catalog.BGMScene.title.group, "進行・画面")
+        XCTAssertEqual(Catalog.BGMScene.gachaOrReward.group, "経済・演出")
+    }
+
+    func testCatalogSFXPurposesMapOneToOne() {
+        XCTAssertEqual(Catalog.SFXPurpose.magicFire.category, .magicFire)
+        XCTAssertEqual(Catalog.SFXPurpose.cardShuffle.category, .cardShuffle)
+        XCTAssertEqual(Catalog.SFXPurpose.gachaSpin.category, .gachaSpin)
+        XCTAssertEqual(Catalog.SFXPurpose.attackSlash.category, .attackSlash)
+        let cats = Catalog.SFXPurpose.allCases.map(\.category)
+        XCTAssertEqual(Set(cats).count, cats.count, "each purpose must map to a unique engine category")
+        XCTAssertEqual(Catalog.SFXPurpose.allCases.count, SFXCategory.allCases.count)
+    }
+
+    func testIntentMapperAcceptsRPGGenreAndNewScene() throws {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            genreId: "rpg",
+            sceneId: "adventure",
+            moodId: "neutral",
+            lengthId: "bars_16",
+            seed: 3
+        )
+        let mapped = try IntentMapper().map(intent)
+        guard case .bgm(let recipe) = mapped else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(recipe.params.bars, 16)
+        XCTAssertLessThan(recipe.params.tempoBpm, 120)
+    }
+
+    func testDistinctPurposesSoundDifferent() throws {
+        let pairs: [(String, String)] = [
+            ("attack_slash", "gacha_spin"),
+            ("card_shuffle", "magic_fire"),
+            ("attack_bash", "magic_ice"),
+            ("move_walk", "ui_tap"),
+        ]
+        let engine = SFXEngine()
+        let mapper = IntentMapper()
+        for (aId, bId) in pairs {
+            let aIntent = SoundIntent(soundType: .sfx, purposeId: aId, moodId: "neutral", lengthId: "sfx_medium", seed: 11)
+            let bIntent = SoundIntent(soundType: .sfx, purposeId: bId, moodId: "neutral", lengthId: "sfx_medium", seed: 11)
+            guard case .sfx(let aRecipe) = try mapper.map(aIntent),
+                  case .sfx(let bRecipe) = try mapper.map(bIntent) else {
+                return XCTFail("expected sfx")
+            }
+            XCTAssertNotEqual(aRecipe.category, bRecipe.category)
+            var aFixed = aRecipe
+            var bFixed = bRecipe
+            aFixed.params.durationMs = 280
+            bFixed.params.durationMs = 280
+            let aBuf = engine.generate(aFixed)
+            let bBuf = engine.generate(bFixed)
+            XCTAssertGreaterThan(
+                meanAbsoluteDifference(aBuf, bBuf),
+                0.05,
+                "\(aId) vs \(bId) too similar"
+            )
+        }
     }
 
     func testMelodyComposerIsDeterministic() {

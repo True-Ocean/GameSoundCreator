@@ -1,17 +1,41 @@
 import Foundation
 
-/// Internal engine category IDs (SPEC §5.1).
+/// Internal engine category IDs (SPEC §5.1). One purpose → one category for distinct sound design.
 public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     case uiTap = "sfx.ui.tap"
     case uiConfirm = "sfx.ui.confirm"
     case uiCancel = "sfx.ui.cancel"
+    case uiBack = "sfx.ui.back"
+    case uiSwipe = "sfx.ui.swipe"
+    case uiDoubleTap = "sfx.ui.double_tap"
+
     case cardDraw = "sfx.card.draw"
     case cardPlay = "sfx.card.play"
+    case cardShuffle = "sfx.card.shuffle"
+    case cardFlip = "sfx.card.flip"
+    case cardDiscard = "sfx.card.discard"
+
     case attackLight = "sfx.attack.light"
     case attackHeavy = "sfx.attack.heavy"
-    case skillCast = "sfx.skill.cast"
+    case attackSlash = "sfx.attack.slash"
+    case attackBash = "sfx.attack.bash"
+    case attackBreak = "sfx.attack.break"
     case damageTake = "sfx.damage.take"
+    case defend = "sfx.defend"
+
+    case skillCast = "sfx.skill.cast"
+    case magicFire = "sfx.magic.fire"
+    case magicIce = "sfx.magic.ice"
+    case magicPoison = "sfx.magic.poison"
     case heal = "sfx.heal"
+
+    case moveWalk = "sfx.move.walk"
+    case moveRun = "sfx.move.run"
+    case moveFly = "sfx.move.fly"
+
+    case gachaSpin = "sfx.gacha.spin"
+    case gachaRare = "sfx.gacha.rare"
+
     case victory = "sfx.victory"
     case defeat = "sfx.defeat"
 
@@ -19,16 +43,34 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
 
     public var displayName: String {
         switch self {
-        case .uiTap: return "タップ / ボタン"
+        case .uiTap: return "タップ"
         case .uiConfirm: return "決定"
         case .uiCancel: return "キャンセル"
+        case .uiBack: return "戻る"
+        case .uiSwipe: return "スワイプ"
+        case .uiDoubleTap: return "ダブルタップ"
         case .cardDraw: return "カードドロー"
         case .cardPlay: return "カードプレイ"
+        case .cardShuffle: return "シャッフル"
+        case .cardFlip: return "めくる"
+        case .cardDiscard: return "捨てる"
         case .attackLight: return "通常攻撃"
         case .attackHeavy: return "強攻撃"
-        case .skillCast: return "スキル発動"
+        case .attackSlash: return "斬る"
+        case .attackBash: return "叩く"
+        case .attackBreak: return "割る"
         case .damageTake: return "被ダメージ"
+        case .defend: return "防御"
+        case .skillCast: return "スキル発動"
+        case .magicFire: return "炎魔法"
+        case .magicIce: return "氷魔法"
+        case .magicPoison: return "毒"
         case .heal: return "回復"
+        case .moveWalk: return "歩く"
+        case .moveRun: return "走る"
+        case .moveFly: return "飛ぶ"
+        case .gachaSpin: return "ガチャ回転"
+        case .gachaRare: return "レア演出"
         case .victory: return "勝利"
         case .defeat: return "敗北"
         }
@@ -38,15 +80,26 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     public var defaultDurationMs: Int {
         switch self {
         case .uiTap: return 80
-        case .uiConfirm: return 140
-        case .uiCancel: return 120
+        case .uiConfirm, .uiCancel, .uiBack: return 140
+        case .uiSwipe: return 180
+        case .uiDoubleTap: return 160
         case .cardDraw: return 280
-        case .cardPlay: return 220
-        case .attackLight: return 220
-        case .attackHeavy: return 420
-        case .skillCast: return 480
+        case .cardPlay, .cardFlip, .cardDiscard: return 220
+        case .cardShuffle: return 420
+        case .attackLight, .attackSlash: return 220
+        case .attackHeavy, .attackBash: return 380
+        case .attackBreak: return 450
         case .damageTake: return 260
+        case .defend: return 240
+        case .skillCast: return 480
+        case .magicFire, .magicIce: return 520
+        case .magicPoison: return 480
         case .heal: return 380
+        case .moveWalk: return 200
+        case .moveRun: return 160
+        case .moveFly: return 360
+        case .gachaSpin: return 500
+        case .gachaRare: return 750
         case .victory: return 700
         case .defeat: return 650
         }
