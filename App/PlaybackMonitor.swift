@@ -38,7 +38,8 @@ final class PlaybackMonitor {
         self.isPlaying = true
         self.startedAt = Date()
         self.currentTime = 0
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        // Keep UI updates modest so menu pickers stay usable while playing.
+        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.tick()
             }

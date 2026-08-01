@@ -31,26 +31,41 @@ public struct BGMEngine: Sendable {
             density: recipe.params.density
         )
         let instrument = InstrumentPalette.from(instrumentId: recipe.params.instrumentId)
-
-        // Drum pattern family from seed (more variety).
-        let kickPattern = kickSteps(pick: Int(rng.unit() * 5), every: rng.unit() > 0.5 ? 4 : 8)
-        let snarePattern = snareSteps(pick: Int(rng.unit() * 4))
-        let hatEvery = rng.unit() > 0.45 ? 2 : 4
-        let fillBars = Set((0..<bars).compactMap { bar -> Int? in
-            (bar % 4 == 3 && rng.unit() > 0.35) ? bar : nil
-        })
-
         let energy = recipe.params.energy
         let density = recipe.params.density
-        let key = recipe.params.key
+        let rhythm = recipe.params.rhythm
+        let pitch = recipe.params.pitchSemitones
+        // Transpose the whole arrangement by shifting the key root.
+        let key = MusicalKey(root: recipe.params.key.root + pitch, mode: recipe.params.key.mode)
+
+        // Rhythm slider drives drum subdivision / fills (audible sparse ↔ busy).
+        let hatEvery: Int
+        if rhythm < 0.34 {
+            hatEvery = 4
+        } else if rhythm < 0.67 {
+            hatEvery = 2
+        } else {
+            hatEvery = 1
+        }
+        let kickEvery = rhythm < 0.4 ? 8 : 4
+        let kickPattern = kickSteps(pick: Int(rng.unit() * 5), every: kickEvery)
+        let snarePattern = snareSteps(pick: Int(rng.unit() * 4))
+        let fillChance = 0.15 + 0.7 * rhythm
+        let fillBars = Set((0..<bars).compactMap { bar -> Int? in
+            (bar % 4 == 3 && rng.unit() > (1 - fillChance)) ? bar : nil
+        })
+        let drumAmpScale = 0.25 + 0.95 * rhythm
+
         let mute = min(0.95, max(0, mood.mute + instrument.muteBias))
         let chordOctave = max(2, min(6, mood.chordOctave + instrument.chordOctaveBias))
         let leadOctave = max(3, min(7, mood.leadOctave + instrument.leadOctaveBias))
 
+        // Blend scene density with rhythm so busy rhythm also feeds melody activity.
+        let melodyDensity = min(1, max(0, density * 0.45 + rhythm * 0.55))
         let melodyPlan = MelodyComposer.compose(
             bars: bars,
             progression: progression,
-            density: density,
+            density: melodyDensity,
             moodId: recipe.params.moodId,
             melodyEnabled: recipe.params.melody,
             melodyChanceScale: instrument.melodyChanceScale,
@@ -61,11 +76,15 @@ public struct BGMEngine: Sendable {
             let key = note.bar * stepsPerBar + note.step
             melodyStarts[key, default: []].append(note)
         }
+        let form = melodyPlan.form
 
         var chordIndex = 0
         for bar in 0..<bars {
+            let section = form.sectionIndex(bar: bar, totalBars: bars)
+            let arrange = MelodyComposer.arrangementScale(form: form, section: section)
             let chordDegree = progression[chordIndex % progression.count]
             chordIndex += 1
+            let sectionLeadOctave = max(3, min(7, leadOctave + arrange.leadOctaveBias))
             let triad = MusicTheory.triadMIDI(
                 root: key.root,
                 chordDegree: chordDegree,
@@ -78,17 +97,22 @@ public struct BGMEngine: Sendable {
                 octave: max(1, chordOctave - 2),
                 mode: key.mode
             )
-            let isFill = fillBars.contains(bar)
+            let isFill = fillBars.contains(bar) || {
+                guard arrange.forceFill else { return false }
+                let sectionLen = max(1, bars / form.sectionCount)
+                return (bar + 1) % sectionLen == 0
+            }()
 
             for step in 0..<stepsPerBar {
                 let start = bar * framesPerBar + step * stepFrames
+                let sectionDrum = drumAmpScale * arrange.drum
 
                 if kickPattern.contains(step) {
                     addKick(
                         &samples,
                         at: start,
                         sampleRate: sampleRate,
-                        amp: mood.drumKick * instrument.drumAmpScale
+                        amp: mood.drumKick * instrument.drumAmpScale * sectionDrum
                     )
                 }
                 if snarePattern.contains(step) || (isFill && step >= 12 && step % 2 == 0) {
@@ -96,16 +120,17 @@ public struct BGMEngine: Sendable {
                         &samples,
                         at: start,
                         sampleRate: sampleRate,
-                        amp: mood.drumSnare * instrument.drumAmpScale,
+                        amp: mood.drumSnare * instrument.drumAmpScale * sectionDrum,
                         rng: &rng
                     )
                 }
-                if step % hatEvery == 0 {
+                let sectionHatEvery = arrange.chordSparse ? max(hatEvery, 4) : hatEvery
+                if step % sectionHatEvery == 0 {
                     addHat(
                         &samples,
                         at: start,
                         sampleRate: sampleRate,
-                        amp: mood.drumHat * instrument.drumAmpScale * instrument.hatAmpScale,
+                        amp: mood.drumHat * instrument.drumAmpScale * instrument.hatAmpScale * sectionDrum,
                         rng: &rng
                     )
                 }
@@ -141,11 +166,15 @@ public struct BGMEngine: Sendable {
 
                 let chordHits: Set<Int>
                 if instrument.sustainChords || mute > 0.4 {
-                    chordHits = [0, 8]
-                } else if density > 0.55 {
+                    chordHits = arrange.chordSparse ? [0] : (rhythm < 0.35 ? [0] : [0, 8])
+                } else if arrange.chordSparse {
+                    chordHits = [0]
+                } else if rhythm > 0.66 {
                     chordHits = [0, 4, 8, 12]
-                } else {
+                } else if rhythm > 0.33 {
                     chordHits = [0, 8]
+                } else {
+                    chordHits = [0]
                 }
                 if chordHits.contains(step) {
                     let chordDur = secondsPerBeat * (instrument.sustainChords || mute > 0.4 ? 1.35 : 0.45)
@@ -159,7 +188,7 @@ public struct BGMEngine: Sendable {
                             freq: MusicTheory.freq(midi: midi),
                             duration: chordDur,
                             amp: mood.chordAmp * instrument.chordAmpScale * upperScale
-                                * (0.75 + 0.35 * density),
+                                * (0.7 + 0.4 * rhythm),
                             shape: instrument.chordShape,
                             mute: mute,
                             envelope: instrument.chordEnv,
@@ -173,7 +202,7 @@ public struct BGMEngine: Sendable {
                         let midi = MusicTheory.midi(
                             root: key.root,
                             degree: lead.degree,
-                            octave: leadOctave,
+                            octave: sectionLeadOctave,
                             mode: key.mode
                         )
                         let durSteps = Double(lead.durationSteps)

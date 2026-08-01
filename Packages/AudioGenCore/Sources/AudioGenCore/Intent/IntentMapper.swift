@@ -113,9 +113,14 @@ public struct IntentMapper: Sendable {
 
     private func baseRecipe(for scene: Catalog.BGMScene, seed: UInt64) -> BGMRecipe {
         switch scene {
-        case .title, .menuMain, .settings, .shop, .story:
+        case .opening, .title, .menuMain, .settings, .shop, .story:
             var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
             switch scene {
+            case .opening:
+                recipe.params.energy = 0.48
+                recipe.params.density = 0.5
+                recipe.params.tempoBpm = 108
+                recipe.params.brightness = 0.75
             case .title:
                 recipe.params.energy = 0.5
                 recipe.params.density = 0.55
@@ -147,16 +152,38 @@ public struct IntentMapper: Sendable {
             recipe.params.key = MusicalKey(root: 7, mode: .major) // G major
             return recipe
 
-        case .battleNormal, .battleBoss, .battlePinch:
+        case .explore:
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            recipe.params.tempoBpm = 102
+            recipe.params.energy = 0.42
+            recipe.params.density = 0.45
+            recipe.params.brightness = 0.55
+            recipe.params.key = MusicalKey(root: 2, mode: .major) // D major
+            return recipe
+
+        case .battleNormal, .battleBoss, .battlePinch, .battleEasy, .battleHard, .battleExtra:
             var recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
-            if scene == .battleBoss {
+            switch scene {
+            case .battleBoss:
                 recipe.params.energy = min(1, recipe.params.energy + 0.15)
                 recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 8)
-            } else if scene == .battlePinch {
+            case .battlePinch, .battleHard:
                 recipe.params.energy = min(1, recipe.params.energy + 0.22)
                 recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 14)
                 recipe.params.density = min(1, recipe.params.density + 0.12)
                 recipe.params.brightness = 0.28
+            case .battleEasy:
+                recipe.params.energy = max(0.35, recipe.params.energy - 0.18)
+                recipe.params.tempoBpm = max(90, recipe.params.tempoBpm - 10)
+                recipe.params.density = max(0.35, recipe.params.density - 0.1)
+                recipe.params.brightness = 0.55
+            case .battleExtra:
+                recipe.params.energy = min(1, recipe.params.energy + 0.28)
+                recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 18)
+                recipe.params.density = min(1, recipe.params.density + 0.18)
+                recipe.params.brightness = 0.4
+            default:
+                break
             }
             return recipe
 
@@ -169,23 +196,29 @@ public struct IntentMapper: Sendable {
             recipe.params.key = MusicalKey(root: 0, mode: .major)
             return recipe
 
-        case .resultWin:
+        case .resultWin, .resultHappyEnd:
             var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
-            recipe.params.energy = 0.55
-            recipe.params.density = 0.75
+            recipe.params.energy = scene == .resultHappyEnd ? 0.62 : 0.55
+            recipe.params.density = scene == .resultHappyEnd ? 0.82 : 0.75
+            recipe.params.brightness = scene == .resultHappyEnd ? 0.92 : 0.8
+            recipe.params.tempoBpm = scene == .resultHappyEnd ? 120 : 112
             return recipe
 
-        case .resultLose:
+        case .resultLose, .resultBadEnd:
             var recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
-            recipe.params.tempoBpm = 88
-            recipe.params.density = 0.3
-            recipe.params.energy = 0.35
+            recipe.params.tempoBpm = scene == .resultBadEnd ? 78 : 88
+            recipe.params.density = scene == .resultBadEnd ? 0.22 : 0.3
+            recipe.params.energy = scene == .resultBadEnd ? 0.28 : 0.35
+            recipe.params.brightness = scene == .resultBadEnd ? 0.08 : 0.15
             return recipe
         }
     }
 
     private func applyMood(_ recipe: inout BGMRecipe, mood: Catalog.Mood, scene: Catalog.BGMScene) {
-        let isBattle = scene == .battleNormal || scene == .battleBoss || scene == .battlePinch
+        let isBattle = [
+            Catalog.BGMScene.battleNormal, .battleBoss, .battlePinch,
+            .battleEasy, .battleHard, .battleExtra
+        ].contains(scene)
         switch mood {
         case .bright:
             recipe.params.key = MusicalKey(root: isBattle ? 0 : recipe.params.key.root, mode: .major)
@@ -195,10 +228,10 @@ public struct IntentMapper: Sendable {
             recipe.params.brightness = 0.9
             recipe.params.melody = true
         case .neutral:
-            if scene == .menuMain || scene == .title || scene == .resultWin || scene == .shop || scene == .gachaOrReward {
+            if [.menuMain, .title, .opening, .resultWin, .resultHappyEnd, .shop, .gachaOrReward].contains(scene) {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .major)
                 recipe.params.brightness = max(recipe.params.brightness, 0.55)
-            } else if isBattle || scene == .resultLose || scene == .battlePinch {
+            } else if isBattle || scene == .resultLose || scene == .resultBadEnd {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .minor)
                 recipe.params.brightness = min(recipe.params.brightness, 0.45)
             } else {
@@ -228,7 +261,7 @@ public struct IntentMapper: Sendable {
         case .rpg:
             recipe.params.tempoBpm = max(80, recipe.params.tempoBpm - 8)
             recipe.params.energy = max(0.2, recipe.params.energy - 0.08)
-            if scene == .adventure || scene == .story {
+            if scene == .adventure || scene == .explore || scene == .story {
                 recipe.params.brightness = min(1, recipe.params.brightness + 0.08)
             }
         case .puzzle:

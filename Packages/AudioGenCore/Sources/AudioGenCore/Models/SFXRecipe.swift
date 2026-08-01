@@ -113,6 +113,8 @@ public struct SFXParams: Codable, Equatable, Sendable {
     public var timbre: Float
     public var intensity: Float
     public var variation: Int
+    /// How many sound events to layer (1–8).
+    public var count: Int
 
     public init(
         seed: UInt64 = 1,
@@ -120,7 +122,8 @@ public struct SFXParams: Codable, Equatable, Sendable {
         pitch: Float = 1.0,
         timbre: Float = 0.5,
         intensity: Float = 0.7,
-        variation: Int = 0
+        variation: Int = 0,
+        count: Int = 1
     ) {
         self.seed = seed
         self.durationMs = min(2000, max(50, durationMs))
@@ -128,10 +131,35 @@ public struct SFXParams: Codable, Equatable, Sendable {
         self.timbre = min(1, max(0, timbre))
         self.intensity = min(1, max(0, intensity))
         self.variation = min(7, max(0, variation))
+        self.count = min(8, max(1, count))
     }
 
     public static func defaults(for category: SFXCategory, seed: UInt64 = 1) -> SFXParams {
         SFXParams(seed: seed, durationMs: category.defaultDurationMs)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case seed, durationMs, pitch, timbre, intensity, variation, count
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let seed = try c.decode(UInt64.self, forKey: .seed)
+        let durationMs = try c.decode(Int.self, forKey: .durationMs)
+        let pitch = try c.decode(Float.self, forKey: .pitch)
+        let timbre = try c.decode(Float.self, forKey: .timbre)
+        let intensity = try c.decode(Float.self, forKey: .intensity)
+        let variation = try c.decode(Int.self, forKey: .variation)
+        let count = try c.decodeIfPresent(Int.self, forKey: .count) ?? 1
+        self.init(
+            seed: seed,
+            durationMs: durationMs,
+            pitch: pitch,
+            timbre: timbre,
+            intensity: intensity,
+            variation: variation,
+            count: count
+        )
     }
 }
 
@@ -155,13 +183,15 @@ public struct SFXRecipe: Codable, Equatable, Sendable {
         timbre: Float = 0.5,
         intensity: Float = 0.7,
         variation: Int = 0,
-        durationMs: Int? = nil
+        durationMs: Int? = nil,
+        count: Int = 1
     ) -> SFXRecipe {
         var params = SFXParams.defaults(for: category, seed: seed)
         params.pitch = pitch
         params.timbre = timbre
         params.intensity = intensity
         params.variation = variation
+        params.count = count
         if let durationMs {
             params.durationMs = durationMs
         }

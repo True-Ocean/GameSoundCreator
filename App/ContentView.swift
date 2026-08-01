@@ -4,11 +4,17 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @AppStorage("appThemeID") private var themeIDRaw = AppThemeID.system.rawValue
+    @AppStorage("appThemeID") private var themeIDRaw = AppThemeID.lime.rawValue
+    /// Concrete theme used while preference is 「ランダム」.
+    @AppStorage("appThemeRandomPick") private var themeRandomPick = AppThemeID.lime.rawValue
     @State private var selectedTab = 0
+    @State private var didRollRandomThisLaunch = false
 
     private var theme: AppTheme {
-        AppTheme.resolved(AppThemeID(rawValue: themeIDRaw) ?? .system)
+        AppTheme.resolved(
+            AppThemeID.resolveStored(themeIDRaw),
+            randomPickRaw: themeRandomPick
+        )
     }
 
     var body: some View {
@@ -35,6 +41,28 @@ struct ContentView: View {
         .onChange(of: selectedTab) { _, _ in
             stopAllPlayback()
         }
+        .onAppear {
+            migrateLegacyThemeIDIfNeeded()
+            rollRandomThemeIfNeeded()
+        }
+    }
+
+    private func migrateLegacyThemeIDIfNeeded() {
+        let resolved = AppThemeID.resolveStored(themeIDRaw)
+        if themeIDRaw != resolved.rawValue {
+            themeIDRaw = resolved.rawValue
+        }
+        let pick = AppThemeID.resolveStored(themeRandomPick)
+        if themeRandomPick != pick.rawValue || !AppThemeID.randomPool.contains(pick) {
+            themeRandomPick = AppThemeID.lime.rawValue
+        }
+    }
+
+    private func rollRandomThemeIfNeeded() {
+        guard !didRollRandomThisLaunch else { return }
+        didRollRandomThisLaunch = true
+        guard AppThemeID.resolveStored(themeIDRaw) == .random else { return }
+        themeRandomPick = AppTheme.rollRandomPick().rawValue
     }
 }
 
@@ -58,7 +86,6 @@ func hapticMedium() {
 private struct CreateCard: View {
     @Environment(\.appTheme) private var theme
     let title: String
-    let subtitle: String
     let systemImage: String
     var showsChevron: Bool = true
 
@@ -70,14 +97,9 @@ private struct CreateCard: View {
                 .frame(width: 44, height: 44)
                 .background(theme.accent.opacity(0.15))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(theme.primaryText)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(theme.secondaryText)
-            }
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(theme.primaryText)
             Spacer()
             if showsChevron {
                 Image(systemName: "chevron.right")
@@ -90,38 +112,26 @@ private struct CreateCard: View {
     }
 }
 
-private struct CatalogChoiceRow: View {
+/// Isolated so StudioView (and its menu pickers) are not redrawn on every progress tick.
+private struct StudioPlaybackProgress: View {
     @Environment(\.appTheme) private var theme
-    let title: String
-    let subtitle: String?
-    let selected: Bool
-    let action: () -> Void
+    @Bindable var monitor: PlaybackMonitor
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .foregroundStyle(theme.primaryText)
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(theme.secondaryText)
-                    }
-                }
+        VStack(spacing: 8) {
+            ProgressView(value: monitor.progress)
+                .tint(theme.accent)
+            HStack {
+                Text(monitor.currentTimeText)
                 Spacer()
-                if selected {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(theme.accent)
-                        .fontWeight(.semibold)
-                }
+                Text(monitor.durationText)
             }
-            .contentShape(Rectangle())
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(theme.secondaryText)
         }
     }
 }
 
-/// Wraps children as whole units (no mid-segment line breaks).
 /// Idle = outlined (same as Stop). Playing = filled accent.
 private struct PlayButtonChrome: ViewModifier {
     @Environment(\.appTheme) private var theme
@@ -136,52 +146,6 @@ private struct PlayButtonChrome: ViewModifier {
             content
                 .buttonStyle(.bordered)
                 .tint(theme.accent)
-        }
-    }
-}
-
-private struct ConditionsWrap: Layout {
-    var lineSpacing: CGFloat = 4
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var widthUsed: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > maxWidth {
-                x = 0
-                y += rowHeight + lineSpacing
-                rowHeight = 0
-            }
-            x += size.width
-            widthUsed = max(widthUsed, x)
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: maxWidth.isFinite ? maxWidth : widthUsed, height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + lineSpacing
-                rowHeight = 0
-            }
-            subview.place(
-                at: CGPoint(x: x, y: y),
-                proposal: ProposedViewSize(size)
-            )
-            x += size.width
-            rowHeight = max(rowHeight, size.height)
         }
     }
 }
@@ -209,13 +173,11 @@ struct HomeView: View {
                     createRow(
                         type: .bgm,
                         title: "BGMスタジオ",
-                        subtitle: "ゲームタイプとシーンからループ曲を作る",
                         systemImage: "music.note.list"
                     )
                     createRow(
                         type: .sfx,
                         title: "効果音スタジオ",
-                        subtitle: "UI・カード・バトルなどの短い音",
                         systemImage: "waveform"
                     )
                 }
@@ -233,11 +195,10 @@ struct HomeView: View {
     private func createRow(
         type: SoundType,
         title: String,
-        subtitle: String,
         systemImage: String
     ) -> some View {
         NavigationLink(value: CreateDestination(soundType: type)) {
-            CreateCard(title: title, subtitle: subtitle, systemImage: systemImage, showsChevron: false)
+            CreateCard(title: title, systemImage: systemImage, showsChevron: false)
         }
     }
 }
@@ -301,11 +262,13 @@ struct StudioView: View {
     private let initialIntent: SoundIntent?
 
     @State private var genreId: String
+    @State private var sceneGroup = "プレイ中"
     @State private var sceneId = Catalog.BGMScene.battleNormal.rawValue
     @State private var purposeGroup = "バトル"
     @State private var purposeId = Catalog.SFXPurpose.attackLight.rawValue
-    @State private var moodId = Catalog.Mood.tense.rawValue
-    @State private var lengthId = Catalog.BGMLength.bars16.rawValue
+    /// Default matches SFX studio; BGM overrides via `applyDefaultIfNeeded`.
+    @State private var moodId = Catalog.Mood.neutral.rawValue
+    @State private var lengthId = Catalog.SFXLength.medium.rawValue
     @State private var instrumentId = Catalog.Instrument.leadSynth.rawValue
     @State private var seed: UInt64 = UInt64.random(in: 1...999_999)
 
@@ -317,15 +280,6 @@ struct StudioView: View {
     @State private var toast: String?
     @State private var exportURL: URL?
     @State private var showShareSheet = false
-    @State private var showConditionsEditor = false
-    @State private var conditionsRoute: ConditionsRoute?
-    @State private var draftGenreId = Catalog.Genre.cardBattle.rawValue
-    @State private var draftSceneId = Catalog.BGMScene.battleNormal.rawValue
-    @State private var draftPurposeGroup = "バトル"
-    @State private var draftPurposeId = Catalog.SFXPurpose.attackLight.rawValue
-    @State private var draftMoodId = Catalog.Mood.tense.rawValue
-    @State private var draftLengthId = Catalog.BGMLength.bars16.rawValue
-    @State private var draftInstrumentId = Catalog.Instrument.leadSynth.rawValue
     @State private var isBusy = false
     @State private var didAppear = false
     @State private var patternFlash = false
@@ -340,9 +294,11 @@ struct StudioView: View {
     @State private var sfxPitch: Double = 1
     @State private var sfxTimbre: Double = 0.5
     @State private var sfxIntensity: Double = 0.7
+    @State private var sfxDurationMs: Double = 280
+    @State private var sfxNoteCount: Double = 1
     @State private var bgmTempo: Double = 120
-    @State private var bgmEnergy: Double = 0.5
-    @State private var bgmDensity: Double = 0.5
+    @State private var bgmPitch: Double = 0
+    @State private var bgmRhythm: Double = 0.5
     @State private var bgmMelody = true
 
     private var service: GenerationService { GenerationService.shared }
@@ -351,29 +307,26 @@ struct StudioView: View {
         soundType == .bgm ? "BGMスタジオ" : "効果音スタジオ"
     }
 
-    private var conditionsSegments: [String] {
-        if soundType == .bgm {
-            let genre = Catalog.Genre(rawValue: genreId)?.displayName ?? genreId
-            let scene = Catalog.BGMScene(rawValue: sceneId)?.displayName ?? sceneId
-            let instrument = Catalog.Instrument.resolve(instrumentId).displayName
-            let mood = Catalog.Mood(rawValue: moodId)?.displayName ?? moodId
-            let length = Catalog.BGMLength.resolve(lengthId).displayName
-            return [genre, scene, "音色：\(instrument)", "雰囲気：\(mood)", "長さ：\(length)"]
-        } else {
-            let purpose = Catalog.SFXPurpose(rawValue: purposeId)
-            let purposeLabel = purpose.map { "\($0.group)/\($0.displayName)" } ?? purposeId
-            let mood = Catalog.Mood(rawValue: moodId)?.displayName ?? moodId
-            let length = Catalog.SFXLength(rawValue: lengthId)?.displayName ?? lengthId
-            return [purposeLabel, "雰囲気：\(mood)", "長さ：\(length)"]
-        }
-    }
-
     init(soundType: SoundType, autoPlay: Bool = false) {
         self.soundType = soundType
         self.autoPlay = autoPlay
         self.initialIntent = nil
         _genreId = State(initialValue: Catalog.Genre.cardBattle.rawValue)
         _loopEnabled = State(initialValue: soundType == .bgm)
+        if soundType == .bgm {
+            let scene = Catalog.BGMScene.battleNormal
+            _sceneGroup = State(initialValue: scene.group)
+            _sceneId = State(initialValue: scene.rawValue)
+            _moodId = State(initialValue: scene.defaultMood.rawValue)
+            _lengthId = State(initialValue: scene.defaultLength.rawValue)
+            _instrumentId = State(initialValue: Catalog.Instrument.defaultFor(scene: scene).rawValue)
+        } else {
+            let purpose = Catalog.SFXPurpose.attackLight
+            _moodId = State(initialValue: Catalog.Mood.neutral.rawValue)
+            _lengthId = State(initialValue: purpose.defaultLength.rawValue)
+            _sfxDurationMs = State(initialValue: Double(purpose.defaultLength.durationMs))
+            _sfxNoteCount = State(initialValue: 1)
+        }
     }
 
     init(intent: SoundIntent, autoPlay: Bool = false) {
@@ -382,7 +335,9 @@ struct StudioView: View {
         self.initialIntent = intent
         _genreId = State(initialValue: intent.genreId)
         _loopEnabled = State(initialValue: intent.soundType == .bgm)
-        _sceneId = State(initialValue: intent.sceneId ?? Catalog.BGMScene.battleNormal.rawValue)
+        let scene = Catalog.BGMScene(rawValue: intent.sceneId ?? "") ?? .battleNormal
+        _sceneGroup = State(initialValue: scene.group)
+        _sceneId = State(initialValue: scene.rawValue)
         _purposeId = State(initialValue: intent.purposeId ?? Catalog.SFXPurpose.attackLight.rawValue)
         _moodId = State(initialValue: intent.moodId)
         _lengthId = State(initialValue: intent.lengthId)
@@ -394,227 +349,452 @@ struct StudioView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            conditionsBar
+        applyStudioObservers(to: studioShell)
+    }
 
-            Spacer(minLength: 14)
-
-            if soundType == .bgm {
-                VStack(spacing: 8) {
-                    ProgressView(value: monitor.progress)
-                        .tint(theme.accent)
-                    HStack {
-                        Text(monitor.currentTimeText)
-                        Spacer()
-                        Text(monitor.durationText)
-                    }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(theme.secondaryText)
-                }
-
-                Spacer(minLength: 14)
+    private var studioShell: some View {
+        studioRoot
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
+            .background(theme.background)
+            .navigationTitle(titleText)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { studioShareToolbar }
+            .safeAreaInset(edge: .bottom) { studioToastBar }
+            .alert("エラー", isPresented: $showError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorText ?? "不明なエラーです")
             }
-
-            HStack(spacing: 10) {
-                playControlButton
-
-                if soundType == .bgm {
-                    Button {
-                        hapticLight()
-                        service.stop()
-                        monitor.stopMonitoring()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "stop.fill")
-                            Text("停止")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(theme.accent)
-                    .disabled(isBusy)
+            .sheet(isPresented: $showShareSheet) {
+                if let exportURL {
+                    ShareSheet(items: [exportURL])
                 }
             }
+            .overlay { generatingOverlay }
+            .animation(.easeOut(duration: 0.15), value: showGeneratingOverlay)
+    }
 
-            Spacer(minLength: 14)
+    @ViewBuilder
+    private var studioRoot: some View {
+        if soundType == .sfx {
+            sfxStudioBody
+        } else {
+            bgmStudioBody
+        }
+    }
 
-            if soundType == .bgm {
-                HStack {
-                    HStack(spacing: 8) {
-                        Text("ループ")
-                            .font(.subheadline)
-                        Toggle("ループ", isOn: $loopEnabled)
-                            .labelsHidden()
-                    }
-                    Spacer(minLength: 24)
-                    HStack(spacing: 8) {
-                        Text("メロディ")
-                            .font(.subheadline)
-                        Toggle("メロディ", isOn: $bgmMelody)
-                            .labelsHidden()
-                    }
-                }
-
-                Spacer(minLength: 14)
-            }
-
-            VStack(spacing: 18) {
-                if soundType == .sfx {
-                    compactSlider("高さ", value: $sfxPitch, range: 0.5...2.0)
-                    compactSlider("音色", value: $sfxTimbre, range: 0...1)
-                    compactSlider("強さ", value: $sfxIntensity, range: 0...1)
-                } else {
-                    compactSlider("速さ", value: $bgmTempo, range: 80...160, step: 1)
-                    compactSlider("迫力", value: $bgmEnergy, range: 0...1)
-                    compactSlider("密度", value: $bgmDensity, range: 0...1)
-                }
-            }
-
-            Spacer(minLength: 14)
-
-            VStack(spacing: 10) {
+    @ToolbarContentBuilder
+    private var studioShareToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
                 Button {
-                    flashPatternButton()
-                    playNow(newSeed: true)
+                    saveLibrary()
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "shuffle")
-                        Text("別パターン")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    Label("ライブラリに保存", systemImage: "bookmark")
                 }
-                .buttonStyle(.bordered)
-                .tint(theme.accent)
-                .disabled(isBusy)
-                .opacity(patternFlash ? 0.7 : 1)
-                .animation(.easeOut(duration: 0.12), value: patternFlash)
+                Button {
+                    exportAndShare()
+                } label: {
+                    Label("WAVを書き出して共有", systemImage: "square.and.arrow.up")
+                }
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .disabled(isBusy)
+            .accessibilityLabel("共有")
+        }
+    }
 
-                Text("Seed \(seed)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(theme.secondaryText)
-            }
+    @ViewBuilder
+    private var studioToastBar: some View {
+        if let toast {
+            Text(toast)
+                .font(.footnote)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
-        .background(theme.background)
-        .navigationTitle(titleText)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        saveLibrary()
-                    } label: {
-                        Label("ライブラリに保存", systemImage: "bookmark")
-                    }
-                    Button {
-                        exportAndShare()
-                    } label: {
-                        Label("WAVを書き出して共有", systemImage: "square.and.arrow.up")
-                    }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
+    }
+
+    @ViewBuilder
+    private var generatingOverlay: some View {
+        if showGeneratingOverlay {
+            ZStack {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                VStack(spacing: 14) {
+                    ProgressView()
+                        .tint(theme.accent)
+                        .scaleEffect(1.15)
+                    Text("BGM生成中…")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.primaryText)
                 }
-                .disabled(isBusy)
-                .accessibilityLabel("共有")
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
+                .background(theme.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(theme.secondaryText.opacity(0.2), lineWidth: 1)
+                }
             }
+            .transition(.opacity)
+            .zIndex(2)
         }
-        .safeAreaInset(edge: .bottom) {
-            if let toast {
-                Text(toast)
-                    .font(.footnote)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func applyStudioObservers<V: View>(to view: V) -> some View {
+        applyFineTuneObservers(to: applyLifecycleObservers(to: view))
+    }
+
+    private func applyLifecycleObservers<V: View>(to view: V) -> some View {
+        view
+            .onAppear(perform: handleStudioAppear)
+            .onDisappear(perform: handleStudioDisappear)
+    }
+
+    private func applyFineTuneObservers<V: View>(to view: V) -> some View {
+        view
+            // SFX: sliders only update params; playback is explicit via 再生 / 別パターン.
+            .onChange(of: sfxDurationMs) { _, newValue in
+                guard soundType == .sfx, !suppressFineTuneReact else { return }
+                lengthId = nearestSFXLengthId(ms: Int(newValue.rounded()))
+                exportURL = nil
             }
-        }
-        .onAppear {
-            guard !didAppear else { return }
-            didAppear = true
-            stopAllPlayback()
-            applyDefaultIfNeeded()
+            .onChange(of: sfxPitch) { _, _ in markSFXParamsEdited() }
+            .onChange(of: sfxTimbre) { _, _ in markSFXParamsEdited() }
+            .onChange(of: sfxIntensity) { _, _ in markSFXParamsEdited() }
+            .onChange(of: sfxNoteCount) { _, _ in markSFXParamsEdited() }
+            .onChange(of: bgmTempo) { _, _ in scheduleFineTune() }
+            .onChange(of: bgmPitch) { _, _ in scheduleFineTune() }
+            .onChange(of: bgmRhythm) { _, _ in scheduleFineTune() }
+            .onChange(of: bgmMelody) { _, _ in scheduleFineTune() }
+    }
+
+    private func handleStudioAppear() {
+        guard !didAppear else { return }
+        didAppear = true
+        stopAllPlayback()
+        suppressFineTuneReact = true
+        applyDefaultIfNeeded()
+        Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(200))
+            suppressFineTuneReact = false
             if autoPlay {
                 playNow(newSeed: false)
             }
         }
-        .onDisappear {
-            fineTuneTask?.cancel()
-            playTask?.cancel()
-            service.stop()
-            monitor.stopMonitoring()
-        }
-        .alert("エラー", isPresented: $showError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorText ?? "不明なエラーです")
-        }
-        .sheet(isPresented: $showShareSheet) {
-            if let exportURL {
-                ShareSheet(items: [exportURL])
-            }
-        }
-        .overlay {
-            if showConditionsEditor {
-                conditionsFloatingOverlay
-                    .transition(.opacity)
-                    .zIndex(1)
-            }
-        }
-        .overlay {
-            if showGeneratingOverlay {
-                ZStack {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-                    VStack(spacing: 14) {
-                        ProgressView()
-                            .tint(theme.accent)
-                            .scaleEffect(1.15)
-                        Text("BGM生成中…")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(theme.primaryText)
-                    }
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 22)
-                    .background(theme.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(theme.secondaryText.opacity(0.2), lineWidth: 1)
+    }
+
+    private func handleStudioDisappear() {
+        fineTuneTask?.cancel()
+        playTask?.cancel()
+        service.stop()
+        monitor.stopMonitoring()
+    }
+
+    /// SFX: all controls on one screen (no modal, no scroll).
+    private var sfxStudioBody: some View {
+        VStack(spacing: 14) {
+            studioMenuRow(title: "カテゴリ") {
+                Picker("カテゴリ", selection: sfxPurposeGroupBinding) {
+                    ForEach(Catalog.sfxPurposeGroupOrder, id: \.self) { group in
+                        Text(group).tag(group)
                     }
                 }
-                .transition(.opacity)
-                .zIndex(2)
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .tint(theme.accent)
             }
+
+            studioMenuRow(title: "用途") {
+                Picker("用途", selection: sfxPurposeIdBinding) {
+                    ForEach(Catalog.sfxPurposes(in: purposeGroup), id: \.rawValue) { purpose in
+                        Text(purpose.displayName).tag(purpose.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .tint(theme.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("雰囲気")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.secondaryText)
+                Picker("雰囲気", selection: sfxMoodIdBinding) {
+                    ForEach(Catalog.moods) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            VStack(spacing: 12) {
+                compactSlider("高さ", value: $sfxPitch, range: 0.5...2.0)
+                compactSlider("音色", value: $sfxTimbre, range: 0...1)
+                compactSlider("強さ", value: $sfxIntensity, range: 0...1)
+                compactSlider("長さ", value: $sfxDurationMs, range: 50...1200, step: 10)
+                compactSlider("音数", value: $sfxNoteCount, range: 1...8, step: 1)
+            }
+
+            Spacer(minLength: 0)
+
+            studioBottomPlaybackControls
         }
-        .animation(.easeOut(duration: 0.2), value: showConditionsEditor)
-        .animation(.easeOut(duration: 0.15), value: showGeneratingOverlay)
-        .onChange(of: sfxPitch) { _, _ in scheduleFineTune() }
-        .onChange(of: sfxTimbre) { _, _ in scheduleFineTune() }
-        .onChange(of: sfxIntensity) { _, _ in scheduleFineTune() }
-        .onChange(of: bgmTempo) { _, _ in scheduleFineTune() }
-        .onChange(of: bgmEnergy) { _, _ in scheduleFineTune() }
-        .onChange(of: bgmDensity) { _, _ in scheduleFineTune() }
-        .onChange(of: bgmMelody) { _, _ in scheduleFineTune() }
+    }
+
+    /// Catalog edits update state only; sound plays on 再生 / 別パターン.
+    private var sfxPurposeGroupBinding: Binding<String> {
+        Binding(
+            get: { purposeGroup },
+            set: { newValue in
+                guard newValue != purposeGroup else { return }
+                purposeGroup = newValue
+                applyPurposeGroupInline(newValue)
+                markSFXCatalogDirty()
+            }
+        )
+    }
+
+    private var sfxPurposeIdBinding: Binding<String> {
+        Binding(
+            get: { purposeId },
+            set: { newValue in
+                guard newValue != purposeId else { return }
+                purposeId = newValue
+                if let purpose = Catalog.SFXPurpose(rawValue: newValue) {
+                    lengthId = purpose.defaultLength.rawValue
+                    suppressFineTuneReact = true
+                    sfxDurationMs = Double(purpose.defaultLength.durationMs)
+                    Task { @MainActor in suppressFineTuneReact = false }
+                }
+                markSFXCatalogDirty()
+            }
+        )
+    }
+
+    private var sfxMoodIdBinding: Binding<String> {
+        Binding(
+            get: { moodId },
+            set: { newValue in
+                guard newValue != moodId else { return }
+                moodId = newValue
+                suppressFineTuneReact = true
+                syncSFXSlidersFromMood()
+                Task { @MainActor in suppressFineTuneReact = false }
+                markSFXCatalogDirty()
+            }
+        )
+    }
+
+    private var bgmStudioBody: some View {
+        VStack(spacing: 12) {
+            studioMenuRow(title: "シーン") {
+                Picker("シーン", selection: bgmSceneGroupBinding) {
+                    ForEach(Catalog.bgmSceneGroupOrder, id: \.self) { group in
+                        Text(group).tag(group)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .tint(theme.accent)
+            }
+
+            studioMenuRow(title: "詳細") {
+                Picker("詳細", selection: bgmSceneIdBinding) {
+                    ForEach(Catalog.bgmScenes(in: sceneGroup), id: \.rawValue) { scene in
+                        Text(scene.displayName).tag(scene.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .tint(theme.accent)
+            }
+
+            studioMenuRow(title: "音色") {
+                Picker("音色", selection: bgmInstrumentIdBinding) {
+                    ForEach(Catalog.instruments) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .tint(theme.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("雰囲気")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.secondaryText)
+                Picker("雰囲気", selection: bgmMoodIdBinding) {
+                    ForEach(Catalog.moods) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("長さ・展開")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.secondaryText)
+                Picker("長さ・展開", selection: bgmLengthIdBinding) {
+                    ForEach(Catalog.bgmLengths) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            HStack {
+                HStack(spacing: 8) {
+                    Text("ループ")
+                        .font(.subheadline)
+                    Toggle("ループ", isOn: bgmLoopBinding)
+                        .labelsHidden()
+                }
+                Spacer(minLength: 24)
+                HStack(spacing: 8) {
+                    Text("メロディ")
+                        .font(.subheadline)
+                    Toggle("メロディ", isOn: $bgmMelody)
+                        .labelsHidden()
+                }
+            }
+
+            StudioPlaybackProgress(monitor: monitor)
+
+            VStack(spacing: 12) {
+                compactSlider("テンポ", value: $bgmTempo, range: 80...160, step: 1)
+                compactSlider("ピッチ", value: $bgmPitch, range: -6...6, step: 1)
+                compactSlider("リズム", value: $bgmRhythm, range: 0...1)
+            }
+
+            Spacer(minLength: 0)
+
+            studioBottomPlaybackControls
+        }
+    }
+
+    private var studioBottomPlaybackControls: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                playControlButton
+                patternControlButton
+            }
+
+            Text("Seed \(seed)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(theme.secondaryText)
+        }
+    }
+
+    private func studioMenuRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 12)
+            content()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: Catalog bindings
+    // BGM: シーン／詳細／音色／長さ → 停止して再生待ち
+    //      雰囲気・微調整 → 再生中は旧音継続のまま再生成し切替
+    //      ループ → 即反映
+
+    private var bgmSceneGroupBinding: Binding<String> {
+        Binding(
+            get: { sceneGroup },
+            set: { newValue in
+                guard newValue != sceneGroup else { return }
+                sceneGroup = newValue
+                applySceneGroupInline(newValue)
+                markBGMStructuralDirty()
+            }
+        )
+    }
+
+    private var bgmSceneIdBinding: Binding<String> {
+        Binding(
+            get: { sceneId },
+            set: { newValue in
+                guard newValue != sceneId else { return }
+                applySceneInline(newValue)
+                markBGMStructuralDirty()
+            }
+        )
+    }
+
+    private var bgmInstrumentIdBinding: Binding<String> {
+        Binding(
+            get: { instrumentId },
+            set: { newValue in
+                guard newValue != instrumentId else { return }
+                instrumentId = newValue
+                markBGMStructuralDirty()
+            }
+        )
+    }
+
+    private var bgmMoodIdBinding: Binding<String> {
+        Binding(
+            get: { moodId },
+            set: { newValue in
+                guard newValue != moodId else { return }
+                moodId = newValue
+                scheduleBGMLiveFromIntent()
+            }
+        )
+    }
+
+    private var bgmLengthIdBinding: Binding<String> {
+        Binding(
+            get: { lengthId },
+            set: { newValue in
+                guard newValue != lengthId else { return }
+                lengthId = newValue
+                markBGMStructuralDirty()
+            }
+        )
+    }
+
+    private var bgmLoopBinding: Binding<Bool> {
+        Binding(
+            get: { loopEnabled },
+            set: { newValue in
+                guard newValue != loopEnabled else { return }
+                loopEnabled = newValue
+                applyBGMLoopImmediate()
+            }
+        )
     }
 
     // MARK: Compact chrome
 
     @ViewBuilder
     private var playControlButton: some View {
+        let showStop = monitor.isPlaying && !isBusy
         let label = HStack(spacing: 6) {
             if isBusy {
                 ProgressView()
-                    .tint(monitor.isPlaying ? Color.white : theme.accent)
+                    .tint(theme.accent)
             } else {
-                Image(systemName: "play.fill")
+                Image(systemName: showStop ? "stop.fill" : "play.fill")
             }
-            Text(isBusy ? "生成中" : "再生")
+            Text(isBusy ? "生成中" : (showStop ? "停止" : "再生"))
                 .font(.subheadline.weight(.semibold))
         }
         .frame(maxWidth: .infinity)
@@ -622,47 +802,38 @@ struct StudioView: View {
 
         Button {
             hapticMedium()
-            playNow(newSeed: false)
+            if showStop {
+                service.stop()
+                monitor.stopMonitoring()
+            } else {
+                playNow(newSeed: false)
+            }
         } label: {
             label
-                .foregroundStyle(monitor.isPlaying ? Color.white : theme.accent)
+                .foregroundStyle(showStop ? Color.white : theme.accent)
         }
-        .disabled(isBusy || showConditionsEditor)
-        .modifier(PlayButtonChrome(isPlaying: monitor.isPlaying))
+        .disabled(isBusy)
+        .modifier(PlayButtonChrome(isPlaying: showStop))
     }
 
-    private var conditionsBar: some View {
+    private var patternControlButton: some View {
         Button {
-            hapticLight()
-            openConditionsEditor()
+            flashPatternButton()
+            playNow(newSeed: true)
         } label: {
-            HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("条件設定")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(theme.secondaryText)
-                    ConditionsWrap {
-                        ForEach(Array(conditionsSegments.enumerated()), id: \.offset) { index, segment in
-                            let isLast = index == conditionsSegments.count - 1
-                            Text(isLast ? segment : "\(segment)、 ")
-                                .font(.subheadline)
-                                .foregroundStyle(theme.primaryText)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                    }
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.secondaryText.opacity(0.7))
+            HStack(spacing: 6) {
+                Image(systemName: "shuffle")
+                Text("別パターン")
+                    .font(.subheadline.weight(.semibold))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
         }
-        .buttonStyle(.plain)
-        .disabled(showConditionsEditor)
+        .buttonStyle(.bordered)
+        .tint(theme.accent)
+        .disabled(isBusy)
+        .opacity(patternFlash ? 0.7 : 1)
+        .animation(.easeOut(duration: 0.12), value: patternFlash)
     }
 
     private func flashPatternButton() {
@@ -683,7 +854,9 @@ struct StudioView: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(.subheadline)
-                .frame(width: 36, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: 56, alignment: .leading)
             if let step {
                 Slider(value: value, in: range, step: step)
             } else {
@@ -692,371 +865,198 @@ struct StudioView: View {
             Text(step != nil ? String(format: "%.0f", value.wrappedValue) : String(format: "%.2f", value.wrappedValue))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(theme.secondaryText)
-                .frame(width: 36, alignment: .trailing)
+                .frame(width: 44, alignment: .trailing)
         }
     }
 
-    // MARK: Conditions editor (floating draft → apply)
+    // MARK: Catalog dirty helpers
 
-    private enum ConditionsRoute: Hashable {
-        case genre
-        case scene
-        case instrument
-        case purposeCategory
-        case purpose
-    }
-
-    private var conditionsFloatingOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.48)
-                .ignoresSafeArea()
-                .allowsHitTesting(true)
-
-            conditionsEditorCard
-                .frame(maxWidth: 440)
-                .frame(maxHeight: 560)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 28)
+    private func applySceneGroupInline(_ group: String) {
+        let scenes = Catalog.bgmScenes(in: group)
+        guard let first = scenes.first else { return }
+        if !scenes.contains(where: { $0.rawValue == sceneId }) {
+            applySceneInline(first.rawValue)
         }
     }
 
-    private var conditionsEditorCard: some View {
-        VStack(spacing: 0) {
-            conditionsEditorHeader
-
-            Group {
-                switch conditionsRoute {
-                case .none:
-                    conditionsRootList
-                case .genre:
-                    draftGenrePickerList
-                case .scene:
-                    draftScenePickerList
-                case .instrument:
-                    draftInstrumentPickerList
-                case .purposeCategory:
-                    draftPurposeCategoryPickerList
-                case .purpose:
-                    draftPurposePickerList
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if conditionsRoute == nil {
-                Button {
-                    hapticMedium()
-                    applyConditionsAndPlay()
-                } label: {
-                    Text("反映して再生")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(theme.accent)
-                .disabled(isBusy)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-                .background(theme.panel)
-            }
-        }
-        .background(theme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(theme.secondaryText.opacity(0.2), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+    private func applySceneInline(_ id: String) {
+        sceneId = id
+        guard let scene = Catalog.BGMScene(rawValue: id) else { return }
+        sceneGroup = scene.group
+        moodId = scene.defaultMood.rawValue
+        lengthId = scene.defaultLength.rawValue
+        instrumentId = Catalog.Instrument.defaultFor(scene: scene).rawValue
     }
 
-    private var conditionsEditorHeader: some View {
-        ZStack {
-            Text(conditionsEditorTitle)
-                .font(.headline)
-
-            HStack {
-                if conditionsRoute != nil {
-                    Button {
-                        hapticLight()
-                        if conditionsRoute == .purpose {
-                            conditionsRoute = .purposeCategory
-                        } else {
-                            conditionsRoute = nil
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text("戻る")
-                        }
-                    }
-                } else {
-                    Button("キャンセル") {
-                        hapticLight()
-                        cancelConditionsEditor()
-                    }
-                }
-                Spacer()
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(theme.panel)
-    }
-
-    private var conditionsEditorTitle: String {
-        switch conditionsRoute {
-        case .none: return "条件設定"
-        case .genre: return "ゲームタイプ"
-        case .scene: return "シーン"
-        case .instrument: return "音色"
-        case .purposeCategory: return "カテゴリ"
-        case .purpose: return "用途"
-        }
-    }
-
-    private var conditionsRootList: some View {
-        List {
-            if soundType == .bgm {
-                Button {
-                    conditionsRoute = .genre
-                } label: {
-                    LabeledContent(
-                        "ゲームタイプ",
-                        value: Catalog.Genre(rawValue: draftGenreId)?.displayName ?? draftGenreId
-                    )
-                }
-                .listRowBackground(theme.panel)
-
-                Button {
-                    conditionsRoute = .scene
-                } label: {
-                    let scene = Catalog.BGMScene(rawValue: draftSceneId)
-                    LabeledContent(
-                        "シーン",
-                        value: scene.map { "\($0.group) / \($0.displayName)" } ?? draftSceneId
-                    )
-                }
-                .listRowBackground(theme.panel)
-
-                Button {
-                    conditionsRoute = .instrument
-                } label: {
-                    LabeledContent("音色", value: Catalog.Instrument.resolve(draftInstrumentId).displayName)
-                }
-                .listRowBackground(theme.panel)
-            } else {
-                Button {
-                    conditionsRoute = .purposeCategory
-                } label: {
-                    LabeledContent("カテゴリ", value: draftPurposeGroup)
-                }
-                .listRowBackground(theme.panel)
-
-                Button {
-                    conditionsRoute = .purpose
-                } label: {
-                    let purpose = Catalog.SFXPurpose(rawValue: draftPurposeId)
-                    LabeledContent(
-                        "用途",
-                        value: purpose?.displayName ?? draftPurposeId
-                    )
-                }
-                .listRowBackground(theme.panel)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("雰囲気")
-                    .font(.subheadline)
-                    .foregroundStyle(theme.secondaryText)
-                Picker("雰囲気", selection: $draftMoodId) {
-                    ForEach(Catalog.moods) { item in
-                        Text(item.displayName).tag(item.id)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-            .padding(.vertical, 2)
-            .listRowBackground(theme.panel)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("長さ")
-                    .font(.subheadline)
-                    .foregroundStyle(theme.secondaryText)
-                Picker("長さ", selection: $draftLengthId) {
-                    ForEach(soundType == .bgm ? Catalog.bgmLengths : Catalog.sfxLengths) { item in
-                        Text(item.displayName).tag(item.id)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-            .padding(.vertical, 2)
-            .listRowBackground(theme.panel)
-        }
-        .scrollContentBackground(.hidden)
-        .background(theme.panel)
-    }
-
-    private var draftGenrePickerList: some View {
-        List {
-            ForEach(Catalog.selectableGenres, id: \.rawValue) { genre in
-                CatalogChoiceRow(
-                    title: genre.displayName,
-                    subtitle: genre.hint,
-                    selected: draftGenreId == genre.rawValue
-                ) {
-                    draftGenreId = genre.rawValue
-                    conditionsRoute = nil
-                }
-                .listRowBackground(theme.panel)
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(theme.panel)
-    }
-
-    private var draftScenePickerList: some View {
-        List {
-            ForEach(Catalog.bgmSceneGroupOrder, id: \.self) { group in
-                Section(group) {
-                    ForEach(Catalog.bgmScenes(in: group), id: \.rawValue) { scene in
-                        CatalogChoiceRow(
-                            title: scene.displayName,
-                            subtitle: nil,
-                            selected: draftSceneId == scene.rawValue
-                        ) {
-                            applyDraftScene(scene.rawValue)
-                            conditionsRoute = nil
-                        }
-                        .listRowBackground(theme.panel)
-                    }
-                }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(theme.panel)
-    }
-
-    private var draftInstrumentPickerList: some View {
-        List {
-            ForEach(Catalog.instruments) { item in
-                CatalogChoiceRow(
-                    title: item.displayName,
-                    subtitle: Catalog.Instrument(rawValue: item.id)?.hint,
-                    selected: draftInstrumentId == item.id
-                ) {
-                    draftInstrumentId = item.id
-                    conditionsRoute = nil
-                }
-                .listRowBackground(theme.panel)
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(theme.panel)
-    }
-
-    private var draftPurposeCategoryPickerList: some View {
-        List {
-            ForEach(Catalog.sfxPurposeGroupOrder, id: \.self) { group in
-                CatalogChoiceRow(
-                    title: group,
-                    subtitle: "\(Catalog.sfxPurposes(in: group).count)件",
-                    selected: draftPurposeGroup == group
-                ) {
-                    applyDraftPurposeGroup(group)
-                    conditionsRoute = .purpose
-                }
-                .listRowBackground(theme.panel)
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(theme.panel)
-    }
-
-    private var draftPurposePickerList: some View {
-        List {
-            Section(draftPurposeGroup) {
-                ForEach(Catalog.sfxPurposes(in: draftPurposeGroup), id: \.rawValue) { purpose in
-                    CatalogChoiceRow(
-                        title: purpose.displayName,
-                        subtitle: nil,
-                        selected: draftPurposeId == purpose.rawValue
-                    ) {
-                        draftPurposeGroup = purpose.group
-                        draftPurposeId = purpose.rawValue
-                        draftLengthId = purpose.defaultLength.rawValue
-                        conditionsRoute = nil
-                    }
-                    .listRowBackground(theme.panel)
-                }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(theme.panel)
-    }
-
-    private func openConditionsEditor() {
-        draftGenreId = genreId
-        draftSceneId = sceneId
-        draftPurposeGroup = purposeGroup
-        draftPurposeId = purposeId
-        draftMoodId = moodId
-        draftLengthId = lengthId
-        draftInstrumentId = instrumentId
-        conditionsRoute = nil
-        showConditionsEditor = true
-    }
-
-    private func cancelConditionsEditor() {
-        conditionsRoute = nil
-        showConditionsEditor = false
-    }
-
-    private func applyConditionsAndPlay() {
-        genreId = draftGenreId
-        sceneId = draftSceneId
-        purposeGroup = draftPurposeGroup
-        purposeId = draftPurposeId
-        moodId = draftMoodId
-        lengthId = draftLengthId
-        instrumentId = draftInstrumentId
+    private func markBGMStructuralDirty() {
+        guard soundType == .bgm else { return }
         catalogDirty = true
         exportURL = nil
-        conditionsRoute = nil
-        showConditionsEditor = false
-        // Immediate apply — no debounce, so the button feels like the commit.
-        playNow(newSeed: false)
+        fineTuneTask?.cancel()
+        playTask?.cancel()
+        showGeneratingOverlay = false
+        isBusy = false
+        service.stop()
+        monitor.stopMonitoring()
     }
 
-    private func applyDraftScene(_ id: String) {
-        draftSceneId = id
-        if let scene = Catalog.BGMScene(rawValue: id) {
-            draftMoodId = scene.defaultMood.rawValue
-            draftLengthId = scene.defaultLength.rawValue
-            draftInstrumentId = Catalog.Instrument.defaultFor(scene: scene).rawValue
+    /// Mood / fine-tune: keep current audio, regenerate, then switch when ready.
+    private func scheduleBGMLiveFromIntent() {
+        guard soundType == .bgm, !suppressFineTuneReact else { return }
+        exportURL = nil
+        fineTuneTask?.cancel()
+        if catalogDirty || mapped == nil {
+            catalogDirty = true
+            return
+        }
+        guard monitor.isPlaying else {
+            catalogDirty = true
+            return
+        }
+        fineTuneTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            guard !catalogDirty, mapped != nil, monitor.isPlaying else { return }
+            await reloadBGMFromIntentLive()
         }
     }
 
-    private func applyDraftPurposeGroup(_ group: String) {
-        draftPurposeGroup = group
+    private func applyBGMLoopImmediate() {
+        guard soundType == .bgm, monitor.isPlaying, mapped != nil else { return }
+        do {
+            try service.playLast(loop: loopEnabled)
+            monitor.start(duration: mapped?.durationSeconds ?? 1, looping: loopEnabled)
+        } catch {
+            errorText = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func applyCurrentBGMParamsToMapped() {
+        guard case .bgm(var recipe) = mapped else { return }
+        recipe.params.tempoBpm = Int(bgmTempo.rounded())
+        recipe.params.pitchSemitones = Int(bgmPitch.rounded())
+        recipe.params.rhythm = Float(bgmRhythm)
+        recipe.params.melody = bgmMelody
+        recipe.params.instrumentId = Catalog.Instrument.resolve(instrumentId).rawValue
+        mapped = .bgm(recipe)
+    }
+
+    private func reloadBGMFromIntentLive() async {
+        let intent = currentIntent()
+        let savedPitch = bgmPitch
+        let savedRhythm = bgmRhythm
+        let savedMelody = bgmMelody
+        isBusy = true
+        showGeneratingOverlay = true
+        await Task.yield()
+        defer {
+            isBusy = false
+            showGeneratingOverlay = false
+        }
+        do {
+            let (mappedRecipe, _) = try await service.generateAsync(intent)
+            guard !Task.isCancelled else { return }
+            mapped = mappedRecipe
+            syncFineTuneFromMapped(mappedRecipe)
+            // Keep fine-tune pitch/rhythm/melody across mood-driven remaps.
+            bgmPitch = savedPitch
+            bgmRhythm = savedRhythm
+            bgmMelody = savedMelody
+            applyCurrentBGMParamsToMapped()
+            if let mapped {
+                _ = await service.generateMappedAsync(mapped, intent: intent)
+            }
+            catalogDirty = false
+            try service.playLast(loop: loopEnabled)
+            monitor.start(duration: mapped?.durationSeconds ?? 1, looping: loopEnabled)
+        } catch is CancellationError {
+            return
+        } catch {
+            errorText = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func applyPurposeGroupInline(_ group: String) {
         let purposes = Catalog.sfxPurposes(in: group)
         guard let first = purposes.first else { return }
-        if !purposes.contains(where: { $0.rawValue == draftPurposeId }) {
-            draftPurposeId = first.rawValue
-            draftLengthId = first.defaultLength.rawValue
+        if !purposes.contains(where: { $0.rawValue == purposeId }) {
+            purposeId = first.rawValue
+            lengthId = first.defaultLength.rawValue
+            suppressFineTuneReact = true
+            sfxDurationMs = Double(first.defaultLength.durationMs)
+            Task { @MainActor in suppressFineTuneReact = false }
         }
+    }
+
+    private func markSFXCatalogDirty() {
+        guard soundType == .sfx else { return }
+        catalogDirty = true
+        exportURL = nil
+        fineTuneTask?.cancel()
+        service.stop()
+        monitor.stopMonitoring()
+    }
+
+    private func markSFXParamsEdited() {
+        guard soundType == .sfx, !suppressFineTuneReact else { return }
+        exportURL = nil
+    }
+
+    private func syncSFXSlidersFromMood() {
+        switch Catalog.Mood(rawValue: moodId) ?? .neutral {
+        case .bright:
+            sfxPitch = 1.35
+            sfxTimbre = 0.15
+            sfxIntensity = 0.55
+        case .neutral:
+            sfxPitch = 1.0
+            sfxTimbre = 0.45
+            sfxIntensity = 0.7
+        case .tense:
+            sfxPitch = 1.12
+            sfxTimbre = 0.85
+            sfxIntensity = 0.95
+        case .dark:
+            sfxPitch = 0.68
+            sfxTimbre = 0.9
+            sfxIntensity = 0.8
+        }
+    }
+
+    private func applyCurrentSFXParamsToMapped() {
+        guard case .sfx(var recipe) = mapped else { return }
+        recipe.params.pitch = Float(sfxPitch)
+        recipe.params.timbre = Float(sfxTimbre)
+        recipe.params.intensity = Float(sfxIntensity)
+        recipe.params.durationMs = Int(sfxDurationMs.rounded())
+        recipe.params.count = Int(sfxNoteCount.rounded())
+        lengthId = nearestSFXLengthId(ms: recipe.params.durationMs)
+        mapped = .sfx(recipe)
+    }
+
+    private func nearestSFXLengthId(ms: Int) -> String {
+        let candidates = Catalog.SFXLength.allCases
+        let best = candidates.min(by: { abs($0.durationMs - ms) < abs($1.durationMs - ms) }) ?? .medium
+        return best.rawValue
     }
 
     // MARK: Debounced updates
 
     private func scheduleFineTune() {
+        guard soundType == .bgm else { return }
         guard !suppressFineTuneReact else { return }
         guard mapped != nil, !catalogDirty else { return }
+        exportURL = nil
         fineTuneTask?.cancel()
-        let delay: Duration = soundType == .bgm ? .milliseconds(450) : .milliseconds(120)
+        // Not playing: keep edits for the next 再生; don't auto-start.
+        guard monitor.isPlaying else { return }
         fineTuneTask = Task { @MainActor in
-            try? await Task.sleep(for: delay)
+            try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }
+            guard !suppressFineTuneReact else { return }
+            guard mapped != nil, !catalogDirty, monitor.isPlaying else { return }
             applyFineTuneAndPlay()
         }
     }
@@ -1069,12 +1069,17 @@ struct StudioView: View {
             purposeGroup = "バトル"
             purposeId = Catalog.SFXPurpose.attackLight.rawValue
             lengthId = Catalog.SFXPurpose.attackLight.defaultLength.rawValue
+            sfxDurationMs = Double(Catalog.SFXPurpose.attackLight.defaultLength.durationMs)
+            sfxNoteCount = 1
             moodId = Catalog.Mood.neutral.rawValue
             genreId = Catalog.Genre.cardBattle.rawValue
+            syncSFXSlidersFromMood()
         } else if let scene = Catalog.BGMScene(rawValue: sceneId) {
+            sceneGroup = scene.group
             instrumentId = Catalog.Instrument.defaultFor(scene: scene).rawValue
             moodId = scene.defaultMood.rawValue
             lengthId = scene.defaultLength.rawValue
+            genreId = Catalog.Genre.cardBattle.rawValue
         }
     }
 
@@ -1129,11 +1134,22 @@ struct StudioView: View {
                     let (mappedRecipe, _) = try service.generate(intent)
                     guard !Task.isCancelled else { return }
                     mapped = mappedRecipe
-                    syncFineTuneFromMapped(mappedRecipe)
+                    // Keep current slider values (mood/purpose already synced them when edited).
                 }
                 catalogDirty = false
+            } else if soundType == .bgm {
+                applyCurrentBGMParamsToMapped()
+                if let mapped {
+                    _ = await service.generateMappedAsync(mapped, intent: intent)
+                }
             }
             guard !Task.isCancelled else { return }
+            if soundType == .sfx {
+                applyCurrentSFXParamsToMapped()
+                if let mapped {
+                    _ = service.generate(mapped: mapped, intent: intent)
+                }
+            }
             try service.playLast(loop: loopEnabled && soundType == .bgm)
             let duration = mapped?.durationSeconds ?? 1
             monitor.start(duration: duration, looping: loopEnabled && soundType == .bgm)
@@ -1146,20 +1162,27 @@ struct StudioView: View {
     }
 
     private func applyFineTuneAndPlay() {
-        guard var current = mapped, !catalogDirty else {
+        // Never generate+play from fine-tune when nothing has been heard yet
+        // (avoids appear-time slider onChange accidentally starting playback).
+        guard let existing = mapped else { return }
+        guard !catalogDirty else {
             playNow(newSeed: false)
             return
         }
+        var current = existing
         switch current {
         case .sfx(var recipe):
             recipe.params.pitch = Float(sfxPitch)
             recipe.params.timbre = Float(sfxTimbre)
             recipe.params.intensity = Float(sfxIntensity)
+            recipe.params.durationMs = Int(sfxDurationMs.rounded())
+            recipe.params.count = Int(sfxNoteCount.rounded())
+            lengthId = nearestSFXLengthId(ms: recipe.params.durationMs)
             current = .sfx(recipe)
         case .bgm(var recipe):
             recipe.params.tempoBpm = Int(bgmTempo.rounded())
-            recipe.params.energy = Float(bgmEnergy)
-            recipe.params.density = Float(bgmDensity)
+            recipe.params.pitchSemitones = Int(bgmPitch.rounded())
+            recipe.params.rhythm = Float(bgmRhythm)
             recipe.params.melody = bgmMelody
             recipe.params.instrumentId = Catalog.Instrument.resolve(instrumentId).rawValue
             current = .bgm(recipe)
@@ -1238,10 +1261,12 @@ struct StudioView: View {
             sfxPitch = Double(recipe.params.pitch)
             sfxTimbre = Double(recipe.params.timbre)
             sfxIntensity = Double(recipe.params.intensity)
+            sfxDurationMs = Double(recipe.params.durationMs)
+            sfxNoteCount = Double(recipe.params.count)
         case .bgm(let recipe):
             bgmTempo = Double(recipe.params.tempoBpm)
-            bgmEnergy = Double(recipe.params.energy)
-            bgmDensity = Double(recipe.params.density)
+            bgmPitch = Double(recipe.params.pitchSemitones)
+            bgmRhythm = Double(recipe.params.rhythm)
             bgmMelody = recipe.params.melody
             instrumentId = recipe.params.instrumentId
         }
@@ -1517,32 +1542,23 @@ struct LibraryView: View {
 
 struct SettingsView: View {
     @Environment(\.appTheme) private var theme
-    @AppStorage("appThemeID") private var themeIDRaw = AppThemeID.system.rawValue
+    @AppStorage("appThemeID") private var themeIDRaw = AppThemeID.lime.rawValue
+    @AppStorage("appThemeRandomPick") private var themeRandomPick = AppThemeID.lime.rawValue
 
     var body: some View {
         List {
-            Section("見た目") {
+            Section("テーマカラー") {
                 ForEach(AppThemeID.allCases) { option in
                     Button {
                         hapticLight()
-                        themeIDRaw = option.rawValue
+                        selectTheme(option)
                     } label: {
                         HStack(spacing: 12) {
-                            Circle()
-                                .fill(AppTheme.resolved(option).accent)
-                                .frame(width: 14, height: 14)
-                                .overlay {
-                                    Circle().strokeBorder(theme.secondaryText.opacity(0.35), lineWidth: 0.5)
-                                }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(option.title)
-                                    .foregroundStyle(theme.primaryText)
-                                Text(option.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(theme.secondaryText)
-                            }
+                            themeSwatch(for: option)
+                            Text(option.title)
+                                .foregroundStyle(theme.primaryText)
                             Spacer()
-                            if themeIDRaw == option.rawValue {
+                            if AppThemeID.resolveStored(themeIDRaw) == option {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(theme.accent)
                                     .fontWeight(.semibold)
@@ -1578,6 +1594,37 @@ struct SettingsView: View {
         }
         .navigationTitle("設定")
         .themedListBackground(theme)
+    }
+
+    private func selectTheme(_ option: AppThemeID) {
+        if option == .random {
+            themeRandomPick = AppTheme.rollRandomPick().rawValue
+        }
+        themeIDRaw = option.rawValue
+    }
+
+    @ViewBuilder
+    private func themeSwatch(for option: AppThemeID) -> some View {
+        if option == .random {
+            Circle()
+                .fill(
+                    AngularGradient(
+                        colors: AppThemeID.randomPool.map { AppTheme.resolved($0).accent } + [AppTheme.resolved(.lime).accent],
+                        center: .center
+                    )
+                )
+                .frame(width: 14, height: 14)
+                .overlay {
+                    Circle().strokeBorder(theme.secondaryText.opacity(0.35), lineWidth: 0.5)
+                }
+        } else {
+            Circle()
+                .fill(AppTheme.resolved(option).accent)
+                .frame(width: 14, height: 14)
+                .overlay {
+                    Circle().strokeBorder(theme.secondaryText.opacity(0.35), lineWidth: 0.5)
+                }
+        }
     }
 }
 

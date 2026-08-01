@@ -18,17 +18,56 @@ public struct MelodyNote: Equatable, Sendable {
     }
 }
 
+/// Phrase layout driven by BGM length (8 / 16 / 24 bars).
+public enum MelodyForm: String, Equatable, Sendable {
+    /// Short loop: motif repeats with light variation.
+    case loop
+    /// 起承: statement then contrasting response.
+    case statementResponse
+    /// 起承転結: four contrasting sections.
+    case kiShoTenKetsu
+
+    public static func forBarCount(_ bars: Int) -> MelodyForm {
+        if bars >= 24 { return .kiShoTenKetsu }
+        if bars >= 16 { return .statementResponse }
+        return .loop
+    }
+
+    public var sectionCount: Int {
+        switch self {
+        case .loop: return 1
+        case .statementResponse: return 2
+        case .kiShoTenKetsu: return 4
+        }
+    }
+
+    public func sectionIndex(bar: Int, totalBars: Int) -> Int {
+        let count = sectionCount
+        guard count > 1, totalBars > 0 else { return 0 }
+        return min(count - 1, bar * count / totalBars)
+    }
+}
+
 /// Motif + rhythm-pattern + contour melody plan (Phase 3.5-M1).
 public struct MelodyPlan: Equatable, Sendable {
     public var rhythmId: Int
     public var contourId: Int
     public var motifBars: Int
+    public var form: MelodyForm
     public var notes: [MelodyNote]
 }
 
 /// Pure melody composer — deterministic from seed, no audio I/O.
 public enum MelodyComposer {
     private static let stepsPerBar = 16
+
+    private struct MotifEvent: Equatable {
+        var barOffset: Int
+        var step: Int
+        var duration: Int
+        var rel: Int
+        var velocity: Float
+    }
 
     public static func compose(
         bars: Int,
@@ -39,8 +78,9 @@ public enum MelodyComposer {
         melodyChanceScale: Float,
         seed: UInt64
     ) -> MelodyPlan {
+        let form = MelodyForm.forBarCount(bars)
         guard melodyEnabled, bars > 0, !progression.isEmpty else {
-            return MelodyPlan(rhythmId: 0, contourId: 0, motifBars: 2, notes: [])
+            return MelodyPlan(rhythmId: 0, contourId: 0, motifBars: 2, form: form, notes: [])
         }
 
         var rng = SeededGenerator(seed: seed &+ 0x4D45_4C4F_4459) // "MELODY"
@@ -53,11 +93,143 @@ public enum MelodyComposer {
         let motifBars = density > 0.65 ? 2 : (rng.unit() > 0.4 ? 2 : 4)
         let keepChance = min(0.98, max(0.25, melodyChanceScale * (0.45 + 0.55 * density)))
 
-        let rhythm = rhythmPool[rhythmId]
-        let contour = contourShape(contourPool[contourId], length: max(4, rhythm.count * motifBars))
+        let rhythmA = rhythmPool[rhythmId]
+        let contourA = contourShape(contourPool[contourId], length: max(4, rhythmA.count * motifBars))
+        let motifA = buildMotif(
+            rhythm: rhythmA,
+            contour: contourA,
+            motifBars: motifBars,
+            keepChance: keepChance,
+            rng: &rng
+        )
 
-        // Build motif events for `motifBars` bars (relative degrees vs chord).
-        var motifEvents: [(barOffset: Int, step: Int, duration: Int, rel: Int, velocity: Float)] = []
+        let rhythmBId = (rhythmId + 1 + Int(rng.unit() * Float(max(1, rhythmPool.count - 1)))) % rhythmPool.count
+        let contourBId = (contourId + 1 + Int(rng.unit() * Float(max(1, contourPool.count - 1)))) % contourPool.count
+        let rhythmB = rhythmPool[rhythmBId]
+        let contourB = contourShape(contourPool[contourBId], length: max(4, rhythmB.count * motifBars))
+        let motifB = buildMotif(
+            rhythm: rhythmB,
+            contour: contourB,
+            motifBars: motifBars,
+            keepChance: min(0.98, keepChance + 0.08),
+            rng: &rng
+        )
+
+        var notes: [MelodyNote] = []
+        notes.reserveCapacity(bars * max(1, motifA.count / max(1, motifBars)))
+
+        for bar in 0..<bars {
+            let chordDegree = progression[bar % progression.count]
+            let section = form.sectionIndex(bar: bar, totalBars: bars)
+            let (events, degreeBias, velocityScale, thinChance) = sectionRendering(
+                form: form,
+                section: section,
+                motifA: motifA,
+                motifB: motifB,
+                motifBars: motifBars,
+                bar: bar
+            )
+
+            for event in events {
+                if thinChance > 0, event.step != 0, rng.unit() < thinChance { continue }
+                var rel = event.rel + degreeBias
+                if event.step % 4 == 0 {
+                    rel = preferChordTone(rel, strongBeat: true)
+                }
+                notes.append(
+                    MelodyNote(
+                        bar: bar,
+                        step: event.step,
+                        degree: chordDegree + rel,
+                        durationSteps: event.duration,
+                        velocity: min(1, max(0.2, event.velocity * velocityScale))
+                    )
+                )
+            }
+        }
+
+        return MelodyPlan(
+            rhythmId: rhythmId,
+            contourId: contourId,
+            motifBars: motifBars,
+            form: form,
+            notes: notes
+        )
+    }
+
+    /// Arrangement hints for drums / octave (consumed by `BGMEngine`).
+    public static func arrangementScale(
+        form: MelodyForm,
+        section: Int
+    ) -> (drum: Float, leadOctaveBias: Int, forceFill: Bool, chordSparse: Bool) {
+        switch form {
+        case .loop:
+            return (1.0, 0, false, false)
+        case .statementResponse:
+            return section == 0
+                ? (1.0, 0, false, false)
+                : (1.12, 0, true, false)
+        case .kiShoTenKetsu:
+            switch section {
+            case 0: return (0.95, 0, false, false) // 起
+            case 1: return (1.05, 0, false, false) // 承
+            case 2: return (1.28, 1, true, false) // 転
+            default: return (0.72, 0, false, true) // 結
+            }
+        }
+    }
+
+    // MARK: - Section rendering
+
+    private static func sectionRendering(
+        form: MelodyForm,
+        section: Int,
+        motifA: [MotifEvent],
+        motifB: [MotifEvent],
+        motifBars: Int,
+        bar: Int
+    ) -> (events: [MotifEvent], degreeBias: Int, velocityScale: Float, thinChance: Float) {
+        let barOffset = bar % motifBars
+        switch form {
+        case .loop:
+            let cycle = bar / motifBars
+            let variation = cycle % 2 == 1 ? -1 : 0
+            let events = motifA.filter { $0.barOffset == barOffset }.map { event in
+                var copy = event
+                copy.rel += variation
+                copy.velocity *= (cycle % 2 == 1 ? 0.92 : 1)
+                return copy
+            }
+            return (events, 0, 1, 0)
+
+        case .statementResponse:
+            if section == 0 {
+                return (motifA.filter { $0.barOffset == barOffset }, 0, 1, 0)
+            }
+            return (motifB.filter { $0.barOffset == barOffset }, 2, 1.05, 0)
+
+        case .kiShoTenKetsu:
+            switch section {
+            case 0: // 起 — establish A
+                return (motifA.filter { $0.barOffset == barOffset }, 0, 1, 0)
+            case 1: // 承 — develop A
+                return (motifA.filter { $0.barOffset == barOffset }, 2, 1.04, 0)
+            case 2: // 転 — contrast B
+                return (motifB.filter { $0.barOffset == barOffset }, 4, 1.12, 0)
+            default: // 結 — thinned A return
+                return (motifA.filter { $0.barOffset == barOffset }, 0, 0.88, 0.35)
+            }
+        }
+    }
+
+    private static func buildMotif(
+        rhythm: [RhythmHit],
+        contour: [Int],
+        motifBars: Int,
+        keepChance: Float,
+        rng: inout SeededGenerator
+    ) -> [MotifEvent] {
+        var motifEvents: [MotifEvent] = []
         var contourIndex = 0
         for barOffset in 0..<motifBars {
             for (index, hit) in rhythm.enumerated() {
@@ -76,51 +248,24 @@ public enum MelodyComposer {
                 } else {
                     velocity = 0.85
                 }
-                // Slightly longer on phrase head / strong beats.
                 let duration = strong ? max(hit.duration, min(4, hit.duration + 1)) : hit.duration
-                motifEvents.append((barOffset, hit.step, duration, rel, velocity))
-            }
-        }
-
-        // Ensure at least one note when melody is on.
-        if motifEvents.isEmpty, let first = rhythm.first {
-            motifEvents.append((0, first.step, first.duration, 0, 1))
-        }
-
-        var notes: [MelodyNote] = []
-        notes.reserveCapacity(bars * max(1, motifEvents.count / max(1, motifBars)))
-
-        for bar in 0..<bars {
-            let chordDegree = progression[bar % progression.count]
-            let cycle = bar / motifBars
-            let barOffset = bar % motifBars
-            // Alternate cycles: light variation (invert contour lean / drop an octave lean).
-            let variation = cycle % 2 == 1 ? -1 : 0
-            let events = motifEvents.filter { $0.barOffset == barOffset }
-
-            for event in events {
-                var rel = event.rel + variation
-                if event.step % 4 == 0 {
-                    rel = preferChordTone(rel, strongBeat: true)
-                }
-                notes.append(
-                    MelodyNote(
-                        bar: bar,
-                        step: event.step,
-                        degree: chordDegree + rel,
-                        durationSteps: event.duration,
-                        velocity: event.velocity * (cycle % 2 == 1 ? 0.92 : 1)
+                motifEvents.append(
+                    MotifEvent(
+                        barOffset: barOffset,
+                        step: hit.step,
+                        duration: duration,
+                        rel: rel,
+                        velocity: velocity
                     )
                 )
             }
         }
-
-        return MelodyPlan(
-            rhythmId: rhythmId,
-            contourId: contourId,
-            motifBars: motifBars,
-            notes: notes
-        )
+        if motifEvents.isEmpty, let first = rhythm.first {
+            motifEvents.append(
+                MotifEvent(barOffset: 0, step: first.step, duration: first.duration, rel: 0, velocity: 1)
+            )
+        }
+        return motifEvents
     }
 
     // MARK: - Rhythm / contour libraries

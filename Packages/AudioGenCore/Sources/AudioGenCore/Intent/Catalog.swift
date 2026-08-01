@@ -54,60 +54,90 @@ public enum Catalog {
     }
 
     public enum BGMScene: String, CaseIterable, Sendable {
+        // 画面
+        case opening = "opening"
         case title = "title"
         case menuMain = "menu_main"
-        case settings = "settings"
-        case story = "story"
-        case adventure = "adventure"
-        case battleNormal = "battle_normal"
-        case battleBoss = "battle_boss"
-        case battlePinch = "battle_pinch"
         case shop = "shop"
         case gachaOrReward = "gacha_or_reward"
+        case settings = "settings"
+        // プレイ中
+        case story = "story"
+        case adventure = "adventure"
+        case explore = "explore"
+        case battleNormal = "battle_normal"
+        case battleBoss = "battle_boss"
+        case battleEasy = "battle_easy"
+        case battleHard = "battle_hard"
+        case battleExtra = "battle_extra"
+        /// Legacy library entries; hidden from picker.
+        case battlePinch = "battle_pinch"
+        // 結果
         case resultWin = "result_win"
         case resultLose = "result_lose"
+        case resultHappyEnd = "result_happy_end"
+        case resultBadEnd = "result_bad_end"
 
         public var displayName: String {
             switch self {
+            case .opening: return "オープニング"
             case .title: return "タイトル"
             case .menuMain: return "メインメニュー"
+            case .shop: return "ショップ"
+            case .gachaOrReward: return "ガチャ"
             case .settings: return "設定"
             case .story: return "ストーリー"
-            case .adventure: return "冒険 / 探索"
-            case .battleNormal: return "通常バトル"
+            case .adventure: return "冒険"
+            case .explore: return "探索"
+            case .battleNormal: return "バトル"
             case .battleBoss: return "ボス戦"
+            case .battleEasy: return "イージーモード"
+            case .battleHard: return "ハードモード"
+            case .battleExtra: return "エクストラモード"
             case .battlePinch: return "ピンチ"
-            case .shop: return "ショップ"
-            case .gachaOrReward: return "ガチャ / 報酬"
             case .resultWin: return "勝利"
             case .resultLose: return "敗北"
+            case .resultHappyEnd: return "ハッピーエンド"
+            case .resultBadEnd: return "バッドエンド"
             }
         }
 
         public var group: String {
             switch self {
-            case .title, .menuMain, .settings, .story: return "進行・画面"
-            case .adventure, .battleNormal, .battleBoss, .battlePinch: return "プレイ中"
-            case .shop, .gachaOrReward: return "経済・演出"
-            case .resultWin, .resultLose: return "結果"
+            case .opening, .title, .menuMain, .shop, .gachaOrReward, .settings:
+                return "画面"
+            case .story, .adventure, .explore, .battleNormal, .battleBoss,
+                 .battleEasy, .battleHard, .battleExtra, .battlePinch:
+                return "プレイ中"
+            case .resultWin, .resultLose, .resultHappyEnd, .resultBadEnd:
+                return "結果"
             }
         }
 
-        public var isAvailable: Bool { true }
+        public var isAvailable: Bool {
+            self != .battlePinch
+        }
 
         public var defaultMood: Mood {
             switch self {
-            case .title, .menuMain, .shop, .resultWin, .gachaOrReward: return .bright
-            case .settings, .story, .adventure: return .neutral
-            case .battleNormal, .battleBoss, .battlePinch: return .tense
-            case .resultLose: return .dark
+            case .opening, .title, .menuMain, .shop, .gachaOrReward, .resultWin, .resultHappyEnd:
+                return .bright
+            case .settings, .story, .adventure, .explore, .battleEasy:
+                return .neutral
+            case .battleNormal, .battleBoss, .battleHard, .battleExtra, .battlePinch:
+                return .tense
+            case .resultLose, .resultBadEnd:
+                return .dark
             }
         }
 
         public var defaultLength: BGMLength {
             switch self {
-            case .title, .resultWin, .resultLose, .gachaOrReward, .settings: return .bars8
-            case .menuMain, .shop, .story, .adventure, .battleNormal, .battleBoss, .battlePinch:
+            case .opening, .title, .settings, .gachaOrReward,
+                 .resultWin, .resultLose, .resultHappyEnd, .resultBadEnd:
+                return .bars8
+            case .menuMain, .shop, .story, .adventure, .explore,
+                 .battleNormal, .battleBoss, .battleEasy, .battleHard, .battleExtra, .battlePinch:
                 return .bars16
             }
         }
@@ -319,12 +349,20 @@ public enum Catalog {
 
         public static func defaultFor(scene: BGMScene) -> Instrument {
             switch scene {
-            case .battleNormal, .battleBoss, .battlePinch: return .leadSynth
-            case .title, .menuMain, .resultWin: return .piano
-            case .shop, .gachaOrReward: return .musicBox
-            case .settings, .resultLose: return .pad
-            case .story: return .organ
-            case .adventure: return .guitar
+            case .battleNormal, .battleBoss, .battlePinch, .battleHard, .battleExtra:
+                return .leadSynth
+            case .battleEasy:
+                return .piano
+            case .opening, .title, .menuMain, .resultWin, .resultHappyEnd:
+                return .piano
+            case .shop, .gachaOrReward:
+                return .musicBox
+            case .settings, .resultLose, .resultBadEnd:
+                return .pad
+            case .story:
+                return .organ
+            case .adventure, .explore:
+                return .guitar
             }
         }
     }
@@ -337,9 +375,18 @@ public enum Catalog {
 
         public var displayName: String {
             switch self {
-            case .bars8: return "8小節"
-            case .bars16: return "16小節"
-            case .bars24: return "24小節"
+            case .bars8: return "8・繰返"
+            case .bars16: return "16・起承"
+            case .bars24: return "24・転結"
+            }
+        }
+
+        /// Short UI caption for how length shapes phrase form.
+        public var formHint: String {
+            switch self {
+            case .bars8: return "くり返し"
+            case .bars16: return "起承"
+            case .bars24: return "起承転結"
             }
         }
 
@@ -410,7 +457,7 @@ public enum Catalog {
         }
     }
 
-    public static let bgmSceneGroupOrder = ["進行・画面", "プレイ中", "経済・演出", "結果"]
+    public static let bgmSceneGroupOrder = ["画面", "プレイ中", "結果"]
 
     public static func bgmScenes(in group: String) -> [BGMScene] {
         BGMScene.allCases.filter { $0.isAvailable && $0.group == group }

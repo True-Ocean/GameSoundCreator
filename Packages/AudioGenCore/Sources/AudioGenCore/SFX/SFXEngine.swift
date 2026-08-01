@@ -17,6 +17,7 @@ public struct SFXEngine: Sendable {
             sampleRate: sampleRate,
             rng: &rng
         )
+        layerRepeatedHits(count: recipe.params.count, samples: &samples)
         Mastering.apply(&samples, targetPeak: 0.82 + 0.12 * recipe.params.intensity)
 
         return PCMBufferFactory().makeBuffer(
@@ -24,6 +25,23 @@ public struct SFXEngine: Sendable {
             sampleRate: sampleRate
         ) { frame in
             samples[frame]
+        }
+    }
+
+    /// Overlay delayed copies so 「音数」 increases audible hits within the same duration.
+    private func layerRepeatedHits(count: Int, samples: inout [Float]) {
+        let hits = min(8, max(1, count))
+        guard hits > 1, samples.count > 8 else { return }
+        let base = samples
+        let span = Double(samples.count) * 0.55
+        for i in 1..<hits {
+            let offset = Int(span * Double(i) / Double(hits))
+            let amp = 0.7 / Float(i + 1) + 0.25
+            var j = offset
+            while j < samples.count {
+                samples[j] += base[j - offset] * amp
+                j += 1
+            }
         }
     }
 

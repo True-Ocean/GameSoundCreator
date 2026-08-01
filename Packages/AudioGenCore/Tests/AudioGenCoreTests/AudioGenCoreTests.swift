@@ -386,6 +386,22 @@ final class AudioGenCoreTests: XCTestCase {
         let data = Data(json.utf8)
         let params = try JSONDecoder().decode(BGMParams.self, from: data)
         XCTAssertEqual(params.instrumentId, Catalog.Instrument.leadSynth.rawValue)
+        XCTAssertEqual(params.pitchSemitones, 0)
+        XCTAssertEqual(params.rhythm, 0.5, accuracy: 0.001)
+    }
+
+    func testBGMPitchAndRhythmChangeAudibly() {
+        var low = BGMPreset.menuMain.makeRecipe(seed: 42)
+        low.params.bars = 8
+        low.params.pitchSemitones = -6
+        low.params.rhythm = 0.05
+        var high = low
+        high.params.pitchSemitones = 6
+        high.params.rhythm = 0.95
+        let engine = BGMEngine()
+        let a = engine.generate(low)
+        let b = engine.generate(high)
+        XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.02)
     }
 
     func testCatalogAvailableGenresIncludeCoreTypes() {
@@ -394,10 +410,34 @@ final class AudioGenCoreTests: XCTestCase {
     }
 
     func testCatalogBGMScenesAreGrouped() {
-        XCTAssertFalse(Catalog.bgmScenes(in: "進行・画面").isEmpty)
+        XCTAssertEqual(Catalog.bgmSceneGroupOrder, ["画面", "プレイ中", "結果"])
+        XCTAssertFalse(Catalog.bgmScenes(in: "画面").isEmpty)
         XCTAssertFalse(Catalog.bgmScenes(in: "プレイ中").isEmpty)
-        XCTAssertEqual(Catalog.BGMScene.title.group, "進行・画面")
-        XCTAssertEqual(Catalog.BGMScene.gachaOrReward.group, "経済・演出")
+        XCTAssertFalse(Catalog.bgmScenes(in: "結果").isEmpty)
+        XCTAssertEqual(Catalog.BGMScene.title.group, "画面")
+        XCTAssertEqual(Catalog.BGMScene.gachaOrReward.group, "画面")
+        XCTAssertEqual(Catalog.BGMScene.story.group, "プレイ中")
+        XCTAssertEqual(Catalog.BGMScene.explore.group, "プレイ中")
+        XCTAssertEqual(Catalog.BGMScene.resultHappyEnd.group, "結果")
+        XCTAssertFalse(Catalog.BGMScene.battlePinch.isAvailable)
+    }
+
+    func testIntentMapperAcceptsNewBGMScenes() throws {
+        let mapper = IntentMapper()
+        for sceneId in ["opening", "explore", "battle_easy", "battle_hard", "battle_extra", "result_happy_end", "result_bad_end"] {
+            let intent = SoundIntent(
+                soundType: .bgm,
+                genreId: "card_battle",
+                sceneId: sceneId,
+                moodId: "neutral",
+                lengthId: "bars_16",
+                seed: 3
+            )
+            let mapped = try mapper.map(intent)
+            guard case .bgm = mapped else {
+                return XCTFail("expected bgm for \(sceneId)")
+            }
+        }
     }
 
     func testCatalogSFXPurposesMapOneToOne() {
@@ -493,6 +533,7 @@ final class AudioGenCoreTests: XCTestCase {
             melodyChanceScale: 1.15,
             seed: 99
         )
+        XCTAssertEqual(plan.form, .loop)
         XCTAssertGreaterThanOrEqual(plan.motifBars, 2)
         let span = plan.motifBars * 2
         let first = plan.notes.filter { $0.bar == 0 }.map { ($0.step, $0.degree - progression[0]) }
@@ -503,6 +544,42 @@ final class AudioGenCoreTests: XCTestCase {
         }
         XCTAssertEqual(first.map(\.0), again.map(\.0), "motif rhythm should repeat")
         XCTAssertEqual(first.map(\.1), again.map(\.1), "motif contour relative to chord should repeat")
+    }
+
+    func testMelodyFormFollowsBarCount() {
+        let progression = [0, 5, 2, 6]
+        let loop = MelodyComposer.compose(
+            bars: 8, progression: progression, density: 0.55, moodId: "neutral",
+            melodyEnabled: true, melodyChanceScale: 1, seed: 3
+        )
+        let two = MelodyComposer.compose(
+            bars: 16, progression: progression, density: 0.55, moodId: "neutral",
+            melodyEnabled: true, melodyChanceScale: 1, seed: 3
+        )
+        let four = MelodyComposer.compose(
+            bars: 24, progression: progression, density: 0.55, moodId: "neutral",
+            melodyEnabled: true, melodyChanceScale: 1, seed: 3
+        )
+        XCTAssertEqual(loop.form, .loop)
+        XCTAssertEqual(two.form, .statementResponse)
+        XCTAssertEqual(four.form, .kiShoTenKetsu)
+
+        let early16 = Set(two.notes.filter { $0.bar < 8 }.map(\.step))
+        let late16 = Set(two.notes.filter { $0.bar >= 8 }.map(\.step))
+        // Response section should not be an exact clone of statement (different motif family).
+        let earlyDeg = two.notes.filter { $0.bar == 0 }.map { $0.degree - progression[0] }
+        let lateDeg = two.notes.filter { $0.bar == 8 }.map { $0.degree - progression[0] }
+        XCTAssertFalse(earlyDeg.isEmpty)
+        XCTAssertFalse(lateDeg.isEmpty)
+        XCTAssertNotEqual(earlyDeg, lateDeg, "16-bar 起承 should change melody shape in second half")
+
+        let ki = four.notes.filter { $0.bar < 6 }.map(\.degree)
+        let ten = four.notes.filter { $0.bar >= 12 && $0.bar < 18 }.map(\.degree)
+        XCTAssertFalse(ki.isEmpty)
+        XCTAssertFalse(ten.isEmpty)
+        XCTAssertNotEqual(Set(ki), Set(ten), "24-bar 転 should differ from 起")
+        _ = early16
+        _ = late16
     }
 
     func testDifferentSeedsPickDifferentMelodyPlans() {

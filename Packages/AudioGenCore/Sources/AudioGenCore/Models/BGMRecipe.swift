@@ -71,15 +71,21 @@ public struct BGMParams: Codable, Equatable, Sendable {
     public var tempoBpm: Int
     public var key: MusicalKey
     public var bars: Int
+    /// Internal note/chord activity from mood/scene (not a primary UI slider).
     public var density: Float
+    /// Internal drum/bass weight from mood/scene (not a primary UI slider).
     public var energy: Float
     public var melody: Bool
     /// Catalog mood id: bright / neutral / tense / dark — drives audible style in the engine.
     public var moodId: String
-    /// 0 = dark/muted, 1 = bright/open. Derived from mood but overridable in fine-tune later.
+    /// 0 = dark/muted, 1 = bright/open. Set from mood (not a UI slider).
     public var brightness: Float
     /// Catalog instrument id: lead_synth / piano / pad / bass.
     public var instrumentId: String
+    /// Fine-tune transpose in semitones (−6…+6).
+    public var pitchSemitones: Int
+    /// Fine-tune rhythmic density (0 = sparse drums/chords, 1 = busy).
+    public var rhythm: Float
 
     public init(
         seed: UInt64 = 1,
@@ -91,7 +97,9 @@ public struct BGMParams: Codable, Equatable, Sendable {
         melody: Bool = true,
         moodId: String = "neutral",
         brightness: Float = 0.5,
-        instrumentId: String = Catalog.Instrument.leadSynth.rawValue
+        instrumentId: String = Catalog.Instrument.leadSynth.rawValue,
+        pitchSemitones: Int = 0,
+        rhythm: Float = 0.5
     ) {
         self.seed = seed
         self.tempoBpm = min(160, max(80, tempoBpm))
@@ -103,10 +111,13 @@ public struct BGMParams: Codable, Equatable, Sendable {
         self.moodId = moodId
         self.brightness = min(1, max(0, brightness))
         self.instrumentId = Catalog.Instrument.resolve(instrumentId).rawValue
+        self.pitchSemitones = min(6, max(-6, pitchSemitones))
+        self.rhythm = min(1, max(0, rhythm))
     }
 
     enum CodingKeys: String, CodingKey {
         case seed, tempoBpm, key, bars, density, energy, melody, moodId, brightness, instrumentId
+        case pitchSemitones, rhythm
     }
 
     public init(from decoder: Decoder) throws {
@@ -121,6 +132,8 @@ public struct BGMParams: Codable, Equatable, Sendable {
         moodId = try c.decodeIfPresent(String.self, forKey: .moodId) ?? "neutral"
         brightness = min(1, max(0, try c.decodeIfPresent(Float.self, forKey: .brightness) ?? 0.5))
         instrumentId = Catalog.Instrument.resolve(try c.decodeIfPresent(String.self, forKey: .instrumentId)).rawValue
+        pitchSemitones = min(6, max(-6, try c.decodeIfPresent(Int.self, forKey: .pitchSemitones) ?? 0))
+        rhythm = min(1, max(0, try c.decodeIfPresent(Float.self, forKey: .rhythm) ?? 0.5))
     }
 }
 
