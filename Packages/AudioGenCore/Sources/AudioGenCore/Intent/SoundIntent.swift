@@ -81,7 +81,7 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
     public var title: String {
         switch soundType {
         case .bgm:
-            let scene = Catalog.BGMScene(rawValue: sceneId ?? "")?.displayName ?? (sceneId ?? "BGM")
+            let scene = Catalog.BGMScene.resolve(sceneId)?.displayName ?? (sceneId ?? "BGM")
             return "\(scene)"
         case .sfx:
             let purpose = Catalog.SFXPurpose(rawValue: purposeId ?? "")?.displayName ?? (purposeId ?? "SE")

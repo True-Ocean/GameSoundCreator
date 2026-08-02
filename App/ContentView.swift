@@ -335,7 +335,7 @@ struct StudioView: View {
         self.initialIntent = intent
         _genreId = State(initialValue: intent.genreId)
         _loopEnabled = State(initialValue: intent.soundType == .bgm)
-        let scene = Catalog.BGMScene(rawValue: intent.sceneId ?? "") ?? .battleNormal
+        let scene = Catalog.BGMScene.resolve(intent.sceneId) ?? .battleNormal
         _sceneGroup = State(initialValue: scene.group)
         _sceneId = State(initialValue: scene.rawValue)
         _purposeId = State(initialValue: intent.purposeId ?? Catalog.SFXPurpose.attackLight.rawValue)
@@ -593,8 +593,8 @@ struct StudioView: View {
         VStack(spacing: 16) {
             // Stops playback when changed.
             VStack(spacing: 10) {
-                studioMenuRow(title: "シーン") {
-                    Picker("シーン", selection: bgmSceneGroupBinding) {
+                studioMenuRow(title: "使う場所") {
+                    Picker("使う場所", selection: bgmSceneGroupBinding) {
                         ForEach(Catalog.bgmSceneGroupOrder, id: \.self) { group in
                             Text(group).tag(group)
                         }
@@ -604,8 +604,8 @@ struct StudioView: View {
                     .tint(theme.accent)
                 }
 
-                studioMenuRow(title: "詳細") {
-                    Picker("詳細", selection: bgmSceneIdBinding) {
+                studioMenuRow(title: "用途") {
+                    Picker("用途", selection: bgmSceneIdBinding) {
                         ForEach(Catalog.bgmScenes(in: sceneGroup), id: \.rawValue) { scene in
                             Text(scene.displayName).tag(scene.rawValue)
                         }
@@ -720,7 +720,7 @@ struct StudioView: View {
 
     // MARK: Catalog bindings
     // BGM UI order mirrors behavior:
-    //   シーン／詳細／音色イメージ／長さ → 停止して再生待ち
+    //   使う場所／用途／音色イメージ／長さ → 停止して再生待ち
     //   雰囲気・テンポ／ピッチ／リズム・メロディ → 再生中は旧音継続のまま再生成し切替
     //   ループ → 再生位置を保ったまま即反映
 
@@ -891,7 +891,8 @@ struct StudioView: View {
 
     private func applySceneInline(_ id: String) {
         sceneId = id
-        guard let scene = Catalog.BGMScene(rawValue: id) else { return }
+        guard let scene = Catalog.BGMScene.resolve(id) else { return }
+        sceneId = scene.rawValue
         sceneGroup = scene.group
         moodId = scene.defaultMood.rawValue
         lengthId = scene.defaultLength.rawValue
@@ -1079,7 +1080,8 @@ struct StudioView: View {
             moodId = Catalog.Mood.neutral.rawValue
             genreId = Catalog.Genre.cardBattle.rawValue
             syncSFXSlidersFromMood()
-        } else if let scene = Catalog.BGMScene(rawValue: sceneId) {
+        } else if let scene = Catalog.BGMScene.resolve(sceneId) {
+            sceneId = scene.rawValue
             sceneGroup = scene.group
             instrumentId = Catalog.Instrument.defaultFor(scene: scene).rawValue
             moodId = scene.defaultMood.rawValue
@@ -1131,10 +1133,28 @@ struct StudioView: View {
         do {
             if needsGenerate {
                 if soundType == .bgm {
+                    // 別パターン must keep UI conditions; only seed changes.
+                    let savedTempo = bgmTempo
+                    let savedPitch = bgmPitch
+                    let savedRhythm = bgmRhythm
+                    let savedMelody = bgmMelody
+                    let savedInstrument = instrumentId
                     let (mappedRecipe, _) = try await service.generateAsync(intent)
                     guard !Task.isCancelled else { return }
                     mapped = mappedRecipe
-                    syncFineTuneFromMapped(mappedRecipe)
+                    if newSeed {
+                        bgmTempo = savedTempo
+                        bgmPitch = savedPitch
+                        bgmRhythm = savedRhythm
+                        bgmMelody = savedMelody
+                        instrumentId = savedInstrument
+                        applyCurrentBGMParamsToMapped()
+                        if let mapped {
+                            _ = await service.generateMappedAsync(mapped, intent: intent)
+                        }
+                    } else {
+                        syncFineTuneFromMapped(mappedRecipe)
+                    }
                 } else {
                     let (mappedRecipe, _) = try service.generate(intent)
                     guard !Task.isCancelled else { return }
@@ -1498,7 +1518,7 @@ struct LibraryView: View {
         let mood = Catalog.Mood(rawValue: entry.intent.moodId)?.displayName ?? entry.intent.moodId
         if entry.intent.soundType == .bgm {
             let genre = Catalog.Genre(rawValue: entry.intent.genreId)?.displayName ?? entry.intent.genreId
-            let scene = Catalog.BGMScene(rawValue: entry.intent.sceneId ?? "")?.displayName
+            let scene = Catalog.BGMScene.resolve(entry.intent.sceneId)?.displayName
                 ?? entry.intent.sceneId
                 ?? "BGM"
             return "\(genre) · \(scene) · \(mood)"

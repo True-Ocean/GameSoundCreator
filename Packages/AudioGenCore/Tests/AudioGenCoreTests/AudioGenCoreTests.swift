@@ -357,13 +357,13 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertGreaterThan(bass.bassTail.fmDecay, 0.05)
 
         let musicBox = InstrumentPalette.from(instrumentId: "music_box")
-        XCTAssertGreaterThan(musicBox.leadOctaveBias, 0)
+        XCTAssertEqual(musicBox.leadOctaveBias, 0)
         // Softer integer-ratio FM: brief tine flash without piercing highs.
         XCTAssertEqual(musicBox.leadFM.ratio.truncatingRemainder(dividingBy: 1), 0, accuracy: 0.001)
         XCTAssertGreaterThanOrEqual(musicBox.leadFM.ratio, 2.0)
-        XCTAssertGreaterThan(musicBox.leadFM.index, 0.35)
-        XCTAssertLessThan(musicBox.leadFM.index, 0.7)
-        XCTAssertLessThan(musicBox.filterCutoffScale, 1.1)
+        XCTAssertGreaterThan(musicBox.leadFM.index, 0.4)
+        XCTAssertLessThan(musicBox.leadFM.index, 0.65)
+        XCTAssertEqual(musicBox.filterCutoffScale, 1.0, accuracy: 0.001)
         XCTAssertGreaterThan(musicBox.muteBias, 0.12)
         XCTAssertLessThan(musicBox.drumAmpScale, 0.5)
         XCTAssertLessThan(musicBox.leadDurationScale, 1.1)
@@ -479,20 +479,41 @@ final class AudioGenCoreTests: XCTestCase {
 
     func testCatalogBGMScenesAreGrouped() {
         XCTAssertEqual(Catalog.bgmSceneGroupOrder, ["画面", "プレイ中", "結果"])
-        XCTAssertFalse(Catalog.bgmScenes(in: "画面").isEmpty)
-        XCTAssertFalse(Catalog.bgmScenes(in: "プレイ中").isEmpty)
-        XCTAssertFalse(Catalog.bgmScenes(in: "結果").isEmpty)
-        XCTAssertEqual(Catalog.BGMScene.title.group, "画面")
-        XCTAssertEqual(Catalog.BGMScene.gachaOrReward.group, "画面")
-        XCTAssertEqual(Catalog.BGMScene.story.group, "プレイ中")
-        XCTAssertEqual(Catalog.BGMScene.explore.group, "プレイ中")
-        XCTAssertEqual(Catalog.BGMScene.resultHappyEnd.group, "結果")
-        XCTAssertFalse(Catalog.BGMScene.battlePinch.isAvailable)
+        XCTAssertEqual(Catalog.bgmScenes(in: "画面").map(\.rawValue), [
+            "title", "menu_main", "shop", "gacha_or_reward", "settings"
+        ])
+        XCTAssertEqual(Catalog.bgmScenes(in: "プレイ中").map(\.rawValue), [
+            "story", "town", "adventure", "explore", "puzzle", "rest", "battle_normal", "battle_boss"
+        ])
+        XCTAssertEqual(Catalog.bgmScenes(in: "結果").map(\.rawValue), [
+            "result_win", "result_lose"
+        ])
+        XCTAssertEqual(Catalog.availableBGMScenes.count, 15)
+        XCTAssertFalse(Catalog.BGMScene.opening.isAvailable)
+        XCTAssertFalse(Catalog.BGMScene.battleEasy.isAvailable)
+        XCTAssertFalse(Catalog.BGMScene.resultHappyEnd.isAvailable)
+        XCTAssertEqual(Catalog.BGMScene.town.group, "プレイ中")
+        XCTAssertEqual(Catalog.BGMScene.puzzle.displayName, "パズル／思考")
+        XCTAssertEqual(Catalog.BGMScene.rest.displayName, "休憩")
     }
 
-    func testIntentMapperAcceptsNewBGMScenes() throws {
+    func testBGMSceneResolveCollapsesLegacyIDs() {
+        XCTAssertEqual(Catalog.BGMScene.resolve("opening"), .title)
+        XCTAssertEqual(Catalog.BGMScene.resolve("battle_easy"), .battleNormal)
+        XCTAssertEqual(Catalog.BGMScene.resolve("battle_hard"), .battleNormal)
+        XCTAssertEqual(Catalog.BGMScene.resolve("battle_extra"), .battleNormal)
+        XCTAssertEqual(Catalog.BGMScene.resolve("battle_pinch"), .battleNormal)
+        XCTAssertEqual(Catalog.BGMScene.resolve("result_happy_end"), .resultWin)
+        XCTAssertEqual(Catalog.BGMScene.resolve("result_bad_end"), .resultLose)
+        XCTAssertEqual(Catalog.BGMScene.resolve("town"), .town)
+    }
+
+    func testIntentMapperAcceptsLegacyAndNewBGMScenes() throws {
         let mapper = IntentMapper()
-        for sceneId in ["opening", "explore", "battle_easy", "battle_hard", "battle_extra", "result_happy_end", "result_bad_end"] {
+        for sceneId in [
+            "opening", "explore", "battle_easy", "battle_hard", "battle_extra",
+            "result_happy_end", "result_bad_end", "town", "puzzle", "rest"
+        ] {
             let intent = SoundIntent(
                 soundType: .bgm,
                 genreId: "card_battle",
@@ -502,10 +523,66 @@ final class AudioGenCoreTests: XCTestCase {
                 seed: 3
             )
             let mapped = try mapper.map(intent)
-            guard case .bgm = mapped else {
+            guard case .bgm(let recipe) = mapped else {
                 return XCTFail("expected bgm for \(sceneId)")
             }
+            if sceneId == "town" {
+                XCTAssertEqual(recipe.params.instrumentId, Catalog.Instrument.guitar.rawValue)
+            }
+            if sceneId == "rest" {
+                XCTAssertEqual(recipe.params.instrumentId, Catalog.Instrument.pad.rawValue)
+            }
+            if sceneId == "puzzle" {
+                XCTAssertEqual(recipe.params.instrumentId, Catalog.Instrument.piano.rawValue)
+            }
         }
+    }
+
+    func testDefaultInstrumentsForTownPuzzleRest() {
+        XCTAssertEqual(Catalog.Instrument.defaultFor(scene: .town), .guitar)
+        XCTAssertEqual(Catalog.Instrument.defaultFor(scene: .puzzle), .piano)
+        XCTAssertEqual(Catalog.Instrument.defaultFor(scene: .rest), .pad)
+    }
+
+    func testTitleAndVictoryRecipesDifferAudibly() throws {
+        let mapper = IntentMapper()
+        let titleIntent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "title",
+            moodId: "bright",
+            lengthId: "bars_4",
+            seed: 42
+        )
+        let winIntent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "result_win",
+            moodId: "bright",
+            lengthId: "bars_4",
+            seed: 42
+        )
+        guard case .bgm(let title) = try mapper.map(titleIntent),
+              case .bgm(let win) = try mapper.map(winIntent) else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(title.params.instrumentId, Catalog.Instrument.piano.rawValue)
+        XCTAssertEqual(win.params.instrumentId, Catalog.Instrument.leadSynth.rawValue)
+        XCTAssertGreaterThan(win.params.tempoBpm, title.params.tempoBpm + 15)
+        XCTAssertGreaterThan(win.params.density, title.params.density + 0.2)
+        XCTAssertGreaterThan(win.params.energy, title.params.energy + 0.15)
+        XCTAssertNotEqual(title.params.key.root, win.params.key.root)
+
+        // Equalize tempo so lengths match; remaining diff is timbre / arrangement.
+        var titleEq = title
+        var winEq = win
+        titleEq.params.tempoBpm = 120
+        winEq.params.tempoBpm = 120
+        let engine = BGMEngine()
+        let a = engine.generate(titleEq)
+        let b = engine.generate(winEq)
+        XCTAssertEqual(a.frameLength, b.frameLength)
+        XCTAssertTrue(hasEnergy(a))
+        XCTAssertTrue(hasEnergy(b))
+        XCTAssertGreaterThan(meanAbsoluteDifference(a, b), 0.04)
     }
 
     func testCatalogSFXPurposesMapOneToOne() {

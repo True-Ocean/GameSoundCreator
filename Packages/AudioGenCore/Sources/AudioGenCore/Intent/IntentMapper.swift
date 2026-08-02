@@ -85,7 +85,7 @@ public struct IntentMapper: Sendable {
 
     private func mapBGM(_ intent: SoundIntent, genre: Catalog.Genre, seed: UInt64) throws -> BGMRecipe {
         guard let sceneId = intent.sceneId else { throw IntentMappingError.missingScene }
-        guard let scene = Catalog.BGMScene(rawValue: sceneId) else {
+        guard let scene = Catalog.BGMScene.resolve(sceneId) else {
             throw IntentMappingError.unknownScene(sceneId)
         }
 
@@ -112,43 +112,65 @@ public struct IntentMapper: Sendable {
     }
 
     private func baseRecipe(for scene: Catalog.BGMScene, seed: UInt64) -> BGMRecipe {
+        let scene = scene.resolved
         switch scene {
-        case .opening, .title, .menuMain, .settings, .shop, .story:
+        case .title, .menuMain, .settings, .shop, .story:
             var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
             switch scene {
-            case .opening:
-                recipe.params.energy = 0.48
-                recipe.params.density = 0.5
-                recipe.params.tempoBpm = 108
-                recipe.params.brightness = 0.75
             case .title:
-                recipe.params.energy = 0.5
-                recipe.params.density = 0.55
-                recipe.params.tempoBpm = 112
+                // Theme / brand loop: spacious piano, not a fanfare.
+                recipe.params.energy = 0.4
+                recipe.params.density = 0.42
+                recipe.params.tempoBpm = 98
+                recipe.params.brightness = 0.62
+                recipe.params.key = MusicalKey(root: 2, mode: .major) // D major
+            case .menuMain:
+                // Idle UI loop: a bit busier and brighter than title.
+                recipe.params.energy = 0.38
+                recipe.params.density = 0.5
+                recipe.params.tempoBpm = 104
+                recipe.params.brightness = 0.6
+                recipe.params.key = MusicalKey(root: 0, mode: .major) // C major
             case .settings:
-                recipe.params.energy = 0.3
-                recipe.params.density = 0.35
-                recipe.params.tempoBpm = 100
+                // Thin utility bed — quieter than rest.
+                recipe.params.energy = 0.22
+                recipe.params.density = 0.28
+                recipe.params.tempoBpm = 96
+                recipe.params.brightness = 0.4
+                recipe.params.key = MusicalKey(root: 7, mode: .major) // G major
             case .shop:
                 recipe.params.energy = 0.45
-                recipe.params.density = 0.6
-                recipe.params.tempoBpm = 118
-                recipe.params.brightness = 0.7
+                recipe.params.density = 0.55
+                recipe.params.tempoBpm = 114
+                recipe.params.brightness = 0.68
+                recipe.params.key = MusicalKey(root: 5, mode: .major) // F major
             case .story:
                 recipe.params.energy = 0.35
                 recipe.params.density = 0.4
                 recipe.params.tempoBpm = 96
                 recipe.params.brightness = 0.4
+                recipe.params.key = MusicalKey(root: 9, mode: .minor) // A minor
             default:
                 break
             }
             return recipe
 
-        case .adventure:
+        case .town:
+            // Living hub: guitar stroll, warmer than menu, less travel than adventure.
             var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
             recipe.params.tempoBpm = 108
-            recipe.params.energy = 0.5
-            recipe.params.density = 0.5
+            recipe.params.energy = 0.44
+            recipe.params.density = 0.48
+            recipe.params.brightness = 0.7
+            recipe.params.key = MusicalKey(root: 5, mode: .major) // F major
+            return recipe
+
+        case .adventure:
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            recipe.params.tempoBpm = 112
+            recipe.params.energy = 0.52
+            recipe.params.density = 0.55
+            recipe.params.brightness = 0.58
             recipe.params.key = MusicalKey(root: 7, mode: .major) // G major
             return recipe
 
@@ -162,65 +184,75 @@ public struct IntentMapper: Sendable {
             recipe.params.key = MusicalKey(root: 4, mode: .minor) // E minor
             return recipe
 
-        case .battleNormal, .battleBoss, .battlePinch, .battleEasy, .battleHard, .battleExtra:
+        case .puzzle:
+            // Light thinking loop — clear, low energy, not dungeon-dark.
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            recipe.params.tempoBpm = 100
+            recipe.params.energy = 0.28
+            recipe.params.density = 0.36
+            recipe.params.brightness = 0.58
+            recipe.params.key = MusicalKey(root: 10, mode: .major) // Bb major
+            return recipe
+
+        case .rest:
+            // Safe-room bed: slower/warmer than settings, brighter than defeat.
+            var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
+            recipe.params.tempoBpm = 86
+            recipe.params.energy = 0.26
+            recipe.params.density = 0.4
+            recipe.params.brightness = 0.58
+            recipe.params.key = MusicalKey(root: 9, mode: .major) // A major
+            return recipe
+
+        case .battleNormal, .battleBoss:
             var recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
-            switch scene {
-            case .battleBoss:
-                recipe.params.energy = min(1, recipe.params.energy + 0.15)
-                recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 8)
-            case .battlePinch, .battleHard:
-                recipe.params.energy = min(1, recipe.params.energy + 0.22)
-                recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 14)
-                recipe.params.density = min(1, recipe.params.density + 0.12)
-                recipe.params.brightness = 0.28
-            case .battleEasy:
-                recipe.params.energy = max(0.35, recipe.params.energy - 0.18)
-                recipe.params.tempoBpm = max(90, recipe.params.tempoBpm - 10)
-                recipe.params.density = max(0.35, recipe.params.density - 0.1)
-                recipe.params.brightness = 0.55
-            case .battleExtra:
-                recipe.params.energy = min(1, recipe.params.energy + 0.28)
-                recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 18)
-                recipe.params.density = min(1, recipe.params.density + 0.18)
-                recipe.params.brightness = 0.4
-            default:
-                break
+            if scene == .battleBoss {
+                recipe.params.energy = min(1, recipe.params.energy + 0.18)
+                recipe.params.tempoBpm = min(160, recipe.params.tempoBpm + 12)
+                recipe.params.density = min(1, recipe.params.density + 0.1)
+                recipe.params.brightness = 0.32
             }
             return recipe
 
         case .gachaOrReward:
+            // Sparkly reward sting — brighter/faster than shop.
             var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
-            recipe.params.tempoBpm = 126
-            recipe.params.energy = 0.55
-            recipe.params.density = 0.7
-            recipe.params.brightness = 0.85
-            recipe.params.key = MusicalKey(root: 0, mode: .major)
+            recipe.params.tempoBpm = 132
+            recipe.params.energy = 0.6
+            recipe.params.density = 0.78
+            recipe.params.brightness = 0.92
+            recipe.params.key = MusicalKey(root: 0, mode: .major) // C major
             return recipe
 
-        case .resultWin, .resultHappyEnd:
+        case .resultWin:
+            // Short fanfare: dense, bright, punchy — not a title theme.
             var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
-            recipe.params.energy = scene == .resultHappyEnd ? 0.62 : 0.55
-            recipe.params.density = scene == .resultHappyEnd ? 0.82 : 0.75
-            recipe.params.brightness = scene == .resultHappyEnd ? 0.92 : 0.8
-            recipe.params.tempoBpm = scene == .resultHappyEnd ? 120 : 112
+            recipe.params.energy = 0.78
+            recipe.params.density = 0.9
+            recipe.params.brightness = 0.95
+            recipe.params.tempoBpm = 132
+            recipe.params.key = MusicalKey(root: 7, mode: .major) // G major
             return recipe
 
-        case .resultLose, .resultBadEnd:
+        case .resultLose:
             var recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
-            recipe.params.tempoBpm = scene == .resultBadEnd ? 78 : 88
-            recipe.params.density = scene == .resultBadEnd ? 0.28 : 0.38
-            recipe.params.energy = scene == .resultBadEnd ? 0.3 : 0.38
+            recipe.params.tempoBpm = 84
+            recipe.params.density = 0.32
+            recipe.params.energy = 0.32
             // Keep somber, but not so dark that phone speakers bury the bed.
-            recipe.params.brightness = scene == .resultBadEnd ? 0.22 : 0.3
+            recipe.params.brightness = 0.28
+            recipe.params.key = MusicalKey(root: 4, mode: .minor) // E minor
             return recipe
+
+        case .opening, .battleEasy, .battleHard, .battleExtra, .battlePinch,
+             .resultHappyEnd, .resultBadEnd:
+            preconditionFailure("BGMScene.resolved must collapse legacy scenes")
         }
     }
 
     private func applyMood(_ recipe: inout BGMRecipe, mood: Catalog.Mood, scene: Catalog.BGMScene) {
-        let isBattle = [
-            Catalog.BGMScene.battleNormal, .battleBoss, .battlePinch,
-            .battleEasy, .battleHard, .battleExtra
-        ].contains(scene)
+        let scene = scene.resolved
+        let isBattle = scene == .battleNormal || scene == .battleBoss
         switch mood {
         case .bright:
             recipe.params.key = MusicalKey(root: isBattle ? 0 : recipe.params.key.root, mode: .major)
@@ -230,10 +262,10 @@ public struct IntentMapper: Sendable {
             recipe.params.brightness = 0.9
             recipe.params.melody = true
         case .neutral:
-            if [.menuMain, .title, .opening, .resultWin, .resultHappyEnd, .shop, .gachaOrReward].contains(scene) {
+            if [.menuMain, .title, .resultWin, .shop, .gachaOrReward, .town, .puzzle].contains(scene) {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .major)
                 recipe.params.brightness = max(recipe.params.brightness, 0.55)
-            } else if isBattle || scene == .resultLose || scene == .resultBadEnd || scene == .explore {
+            } else if isBattle || scene == .resultLose || scene == .explore {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .minor)
                 recipe.params.brightness = min(recipe.params.brightness, scene == .explore ? 0.38 : 0.45)
             } else {
@@ -258,13 +290,14 @@ public struct IntentMapper: Sendable {
     }
 
     private func applyGenre(_ recipe: inout BGMRecipe, genre: Catalog.Genre, scene: Catalog.BGMScene) {
+        let scene = scene.resolved
         switch genre {
         case .cardBattle:
             break
         case .rpg:
             recipe.params.tempoBpm = max(80, recipe.params.tempoBpm - 8)
             recipe.params.energy = max(0.2, recipe.params.energy - 0.08)
-            if scene == .adventure || scene == .explore || scene == .story {
+            if scene == .adventure || scene == .explore || scene == .story || scene == .town || scene == .rest {
                 recipe.params.brightness = min(1, recipe.params.brightness + 0.08)
             }
         case .puzzle:

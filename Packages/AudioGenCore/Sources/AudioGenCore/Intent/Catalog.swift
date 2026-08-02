@@ -55,6 +55,7 @@ public enum Catalog {
 
     public enum BGMScene: String, CaseIterable, Sendable {
         // 画面
+        /// Legacy; resolves to `title`.
         case opening = "opening"
         case title = "title"
         case menuMain = "menu_main"
@@ -63,18 +64,22 @@ public enum Catalog {
         case settings = "settings"
         // プレイ中
         case story = "story"
+        case town = "town"
         case adventure = "adventure"
         case explore = "explore"
+        case puzzle = "puzzle"
+        case rest = "rest"
         case battleNormal = "battle_normal"
         case battleBoss = "battle_boss"
+        /// Legacy difficulty variants; resolve to `battle_normal`.
         case battleEasy = "battle_easy"
         case battleHard = "battle_hard"
         case battleExtra = "battle_extra"
-        /// Legacy library entries; hidden from picker.
         case battlePinch = "battle_pinch"
         // 結果
         case resultWin = "result_win"
         case resultLose = "result_lose"
+        /// Legacy; resolves to `result_win` / `result_lose`.
         case resultHappyEnd = "result_happy_end"
         case resultBadEnd = "result_bad_end"
 
@@ -87,8 +92,11 @@ public enum Catalog {
             case .gachaOrReward: return "ガチャ"
             case .settings: return "設定"
             case .story: return "ストーリー"
+            case .town: return "町／拠点"
             case .adventure: return "冒険"
             case .explore: return "探索"
+            case .puzzle: return "パズル／思考"
+            case .rest: return "休憩"
             case .battleNormal: return "バトル"
             case .battleBoss: return "ボス戦"
             case .battleEasy: return "イージーモード"
@@ -106,8 +114,8 @@ public enum Catalog {
             switch self {
             case .opening, .title, .menuMain, .shop, .gachaOrReward, .settings:
                 return "画面"
-            case .story, .adventure, .explore, .battleNormal, .battleBoss,
-                 .battleEasy, .battleHard, .battleExtra, .battlePinch:
+            case .story, .town, .adventure, .explore, .puzzle, .rest,
+                 .battleNormal, .battleBoss, .battleEasy, .battleHard, .battleExtra, .battlePinch:
                 return "プレイ中"
             case .resultWin, .resultLose, .resultHappyEnd, .resultBadEnd:
                 return "結果"
@@ -115,29 +123,61 @@ public enum Catalog {
         }
 
         public var isAvailable: Bool {
-            self != .battlePinch
+            switch self {
+            case .title, .menuMain, .shop, .gachaOrReward, .settings,
+                 .story, .town, .adventure, .explore, .puzzle, .rest,
+                 .battleNormal, .battleBoss, .resultWin, .resultLose:
+                return true
+            case .opening, .battleEasy, .battleHard, .battleExtra, .battlePinch,
+                 .resultHappyEnd, .resultBadEnd:
+                return false
+            }
+        }
+
+        /// Collapse legacy IDs so library entries keep working.
+        public var resolved: BGMScene {
+            switch self {
+            case .opening: return .title
+            case .battleEasy, .battleHard, .battleExtra, .battlePinch: return .battleNormal
+            case .resultHappyEnd: return .resultWin
+            case .resultBadEnd: return .resultLose
+            case .title, .menuMain, .shop, .gachaOrReward, .settings,
+                 .story, .town, .adventure, .explore, .puzzle, .rest,
+                 .battleNormal, .battleBoss, .resultWin, .resultLose:
+                return self
+            }
+        }
+
+        public static func resolve(_ id: String?) -> BGMScene? {
+            guard let id, let scene = BGMScene(rawValue: id) else { return nil }
+            return scene.resolved
         }
 
         public var defaultMood: Mood {
-            switch self {
-            case .opening, .title, .menuMain, .shop, .gachaOrReward, .resultWin, .resultHappyEnd:
+            switch resolved {
+            case .title, .menuMain, .shop, .gachaOrReward, .town, .resultWin:
                 return .bright
-            case .settings, .story, .adventure, .explore, .battleEasy:
+            case .settings, .story, .adventure, .explore, .puzzle, .rest:
                 return .neutral
-            case .battleNormal, .battleBoss, .battleHard, .battleExtra, .battlePinch:
+            case .battleNormal, .battleBoss:
                 return .tense
-            case .resultLose, .resultBadEnd:
+            case .resultLose:
                 return .dark
+            case .opening, .battleEasy, .battleHard, .battleExtra, .battlePinch,
+                 .resultHappyEnd, .resultBadEnd:
+                return .neutral
             }
         }
 
         public var defaultLength: BGMLength {
-            switch self {
-            case .opening, .title, .settings, .gachaOrReward,
-                 .resultWin, .resultLose, .resultHappyEnd, .resultBadEnd:
+            switch resolved {
+            case .title, .settings, .gachaOrReward, .resultWin, .resultLose:
                 return .bars4
-            case .menuMain, .shop, .story, .adventure, .explore,
-                 .battleNormal, .battleBoss, .battleEasy, .battleHard, .battleExtra, .battlePinch:
+            case .menuMain, .shop, .story, .town, .adventure, .explore, .puzzle, .rest,
+                 .battleNormal, .battleBoss:
+                return .bars8
+            case .opening, .battleEasy, .battleHard, .battleExtra, .battlePinch,
+                 .resultHappyEnd, .resultBadEnd:
                 return .bars8
             }
         }
@@ -348,16 +388,17 @@ public enum Catalog {
         }
 
         public static func defaultFor(scene: BGMScene) -> Instrument {
-            switch scene {
-            case .battleNormal, .battleBoss, .battlePinch, .battleHard, .battleExtra:
+            switch scene.resolved {
+            case .battleNormal, .battleBoss, .resultWin:
+                // Victory uses lead for fanfare bite; distinct from title piano.
                 return .leadSynth
-            case .battleEasy:
+            case .title, .menuMain, .puzzle:
                 return .piano
-            case .opening, .title, .menuMain, .resultWin, .resultHappyEnd:
-                return .piano
+            case .town:
+                return .guitar
             case .shop, .gachaOrReward:
                 return .musicBox
-            case .settings, .resultLose, .resultBadEnd:
+            case .settings, .resultLose, .rest:
                 return .pad
             case .story:
                 return .organ
@@ -365,6 +406,9 @@ public enum Catalog {
                 return .guitar
             case .explore:
                 return .bass
+            case .opening, .battleEasy, .battleHard, .battleExtra, .battlePinch,
+                 .resultHappyEnd, .resultBadEnd:
+                return .piano
             }
         }
     }

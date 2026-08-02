@@ -202,7 +202,7 @@ struct InstrumentPalette: Sendable {
                 pianoVoice: false
             )
         case .musicBox:
-            // Soft tine plucks: brief metal flash, then rounded sine ring (less piercing).
+            // Metal tine plucks: keep the high sparkle, but one octave below the old piercing register.
             return InstrumentPalette(
                 chordShape: .sine,
                 bassShape: .sine,
@@ -212,20 +212,21 @@ struct InstrumentPalette: Sendable {
                 leadEnv: ADSR(attack: 0.001, decay: 0.52, sustain: 0, release: 0.12),
                 chordAmpScale: 0.26,
                 bassAmpScale: 0.28,
-                leadAmpScale: 1.45,
+                leadAmpScale: 1.4,
                 chordDurationScale: 0.7,
                 bassDurationScale: 0.75,
                 leadDurationScale: 0.7,
                 muteBias: 0.18,
-                leadOctaveBias: 1,
+                // Was +1 (too shrill). 0 = mood lead octave; keeps tine character without marimba midrange.
+                leadOctaveBias: 0,
                 chordOctaveBias: 0,
                 melodyChanceScale: 1.15,
                 sustainChords: false,
-                filterCutoffScale: 1.02,
+                filterCutoffScale: 1.0,
                 reverbMixBias: 0.18,
                 chordFM: FMTone(ratio: 2.0, index: 0.22),
                 bassFM: FMTone(ratio: 1.0, index: 0.05),
-                leadFM: FMTone(ratio: 2.0, index: 0.55),
+                leadFM: FMTone(ratio: 2.0, index: 0.52),
                 drumAmpScale: 0.2,
                 chordUpperAtten: 0.5,
                 bassRootHeavy: true,
