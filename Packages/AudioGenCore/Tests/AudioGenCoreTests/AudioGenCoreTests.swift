@@ -393,6 +393,15 @@ final class AudioGenCoreTests: XCTestCase {
         let guitar = InstrumentPalette.from(instrumentId: "guitar")
         XCTAssertFalse(guitar.sustainChords)
         XCTAssertEqual(guitar.leadShape, .saw)
+        XCTAssertEqual(guitar.leadFM.ratio, 2.0, accuracy: 0.001)
+        XCTAssertLessThan(guitar.leadFM.index, 0.6)
+        XCTAssertGreaterThan(guitar.muteBias, 0.1)
+        XCTAssertLessThan(guitar.filterCutoffScale, 1.05)
+        XCTAssertGreaterThan(guitar.leadTail.ringOut, 0.2)
+        XCTAssertGreaterThan(guitar.leadTail.fmDecay, 0.05)
+        XCTAssertGreaterThan(guitar.chordTail.ringOut, 0.1)
+        XCTAssertTrue(guitar.bassRootHeavy)
+        XCTAssertLessThan(guitar.drumAmpScale, 0.9)
     }
 
     func testMusicBoxAndOrganDifferAudibly() throws {

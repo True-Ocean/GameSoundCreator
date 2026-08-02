@@ -707,6 +707,7 @@ struct StudioView: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(.subheadline)
+                .foregroundStyle(theme.secondaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
                 .frame(width: 56, alignment: .leading)
@@ -862,6 +863,7 @@ struct StudioView: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(.subheadline)
+                .foregroundStyle(theme.secondaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
                 .frame(width: 56, alignment: .leading)
