@@ -7,7 +7,6 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     case uiCancel = "sfx.ui.cancel"
     case uiBack = "sfx.ui.back"
     case uiSwipe = "sfx.ui.swipe"
-    case uiDoubleTap = "sfx.ui.double_tap"
 
     case cardDraw = "sfx.card.draw"
     case cardPlay = "sfx.card.play"
@@ -20,6 +19,7 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     case attackSlash = "sfx.attack.slash"
     case attackBash = "sfx.attack.bash"
     case attackBreak = "sfx.attack.break"
+    case attackBow = "sfx.attack.bow"
     case damageTake = "sfx.damage.take"
     case defend = "sfx.defend"
 
@@ -27,17 +27,26 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     case magicFire = "sfx.magic.fire"
     case magicIce = "sfx.magic.ice"
     case magicPoison = "sfx.magic.poison"
+    case magicStorm = "sfx.magic.storm"
+    case magicBeam = "sfx.magic.beam"
     case heal = "sfx.heal"
 
     case moveWalk = "sfx.move.walk"
     case moveRun = "sfx.move.run"
     case moveFly = "sfx.move.fly"
+    case moveJump = "sfx.move.jump"
+    case moveLand = "sfx.move.land"
+    case moveDash = "sfx.move.dash"
+    case moveSwim = "sfx.move.swim"
+    case moveDoor = "sfx.move.door"
 
     case gachaSpin = "sfx.gacha.spin"
     case gachaRare = "sfx.gacha.rare"
 
     case victory = "sfx.victory"
     case defeat = "sfx.defeat"
+    case fanfareSting = "sfx.fanfare.sting"
+    case fanfareCorrect = "sfx.fanfare.correct"
 
     public var id: String { rawValue }
 
@@ -48,7 +57,6 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
         case .uiCancel: return "キャンセル"
         case .uiBack: return "戻る"
         case .uiSwipe: return "スワイプ"
-        case .uiDoubleTap: return "ダブルタップ"
         case .cardDraw: return "カードドロー"
         case .cardPlay: return "カードプレイ"
         case .cardShuffle: return "シャッフル"
@@ -59,20 +67,30 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
         case .attackSlash: return "斬る"
         case .attackBash: return "叩く"
         case .attackBreak: return "割る"
+        case .attackBow: return "弓攻撃"
         case .damageTake: return "被ダメージ"
         case .defend: return "防御"
         case .skillCast: return "スキル発動"
         case .magicFire: return "炎魔法"
         case .magicIce: return "氷魔法"
         case .magicPoison: return "毒"
+        case .magicStorm: return "嵐"
+        case .magicBeam: return "ビーム照射"
         case .heal: return "回復"
         case .moveWalk: return "歩く"
         case .moveRun: return "走る"
         case .moveFly: return "飛ぶ"
+        case .moveJump: return "ジャンプ"
+        case .moveLand: return "着地"
+        case .moveDash: return "ダッシュ"
+        case .moveSwim: return "泳ぐ"
+        case .moveDoor: return "扉を開く"
         case .gachaSpin: return "ガチャ回転"
         case .gachaRare: return "レア演出"
         case .victory: return "勝利"
         case .defeat: return "敗北"
+        case .fanfareSting: return "ジャジャーン"
+        case .fanfareCorrect: return "ピンポーン"
         }
     }
 
@@ -82,26 +100,38 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
         case .uiTap: return 80
         case .uiConfirm, .uiCancel, .uiBack: return 140
         case .uiSwipe: return 180
-        case .uiDoubleTap: return 160
         case .cardDraw: return 280
         case .cardPlay, .cardFlip, .cardDiscard: return 220
         case .cardShuffle: return 420
-        case .attackLight, .attackSlash: return 220
-        case .attackHeavy, .attackBash: return 380
+        case .attackLight: return 220
+        case .attackSlash: return 280
+        case .attackBash: return 280
+        case .attackHeavy: return 480
         case .attackBreak: return 450
+        case .attackBow: return 500
         case .damageTake: return 260
         case .defend: return 240
-        case .skillCast: return 480
-        case .magicFire, .magicIce: return 520
+        case .skillCast: return 400
+        case .magicFire: return 520
+        case .magicIce: return 560
         case .magicPoison: return 480
+        case .magicStorm: return 700
+        case .magicBeam: return 650
         case .heal: return 380
         case .moveWalk: return 200
         case .moveRun: return 160
         case .moveFly: return 360
+        case .moveJump: return 220
+        case .moveLand: return 180
+        case .moveDash: return 200
+        case .moveSwim: return 420
+        case .moveDoor: return 380
         case .gachaSpin: return 500
-        case .gachaRare: return 750
-        case .victory: return 700
+        case .gachaRare: return 650
+        case .victory: return 680
         case .defeat: return 650
+        case .fanfareSting: return 650
+        case .fanfareCorrect: return 500
         }
     }
 }

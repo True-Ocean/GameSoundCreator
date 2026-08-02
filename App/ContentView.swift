@@ -324,7 +324,7 @@ struct StudioView: View {
             let purpose = Catalog.SFXPurpose.attackLight
             _moodId = State(initialValue: Catalog.Mood.neutral.rawValue)
             _lengthId = State(initialValue: purpose.defaultLength.rawValue)
-            _sfxDurationMs = State(initialValue: Double(purpose.defaultLength.durationMs))
+            _sfxDurationMs = State(initialValue: Double(purpose.category.defaultDurationMs))
             _sfxNoteCount = State(initialValue: 1)
         }
     }
@@ -565,9 +565,9 @@ struct StudioView: View {
                 guard newValue != purposeId else { return }
                 purposeId = newValue
                 if let purpose = Catalog.SFXPurpose(rawValue: newValue) {
-                    lengthId = purpose.defaultLength.rawValue
                     suppressFineTuneReact = true
-                    sfxDurationMs = Double(purpose.defaultLength.durationMs)
+                    sfxDurationMs = Double(purpose.category.defaultDurationMs)
+                    lengthId = nearestSFXLengthId(ms: Int(sfxDurationMs.rounded()))
                     Task { @MainActor in suppressFineTuneReact = false }
                 }
                 markSFXCatalogDirty()
@@ -989,9 +989,9 @@ struct StudioView: View {
         guard let first = purposes.first else { return }
         if !purposes.contains(where: { $0.rawValue == purposeId }) {
             purposeId = first.rawValue
-            lengthId = first.defaultLength.rawValue
             suppressFineTuneReact = true
-            sfxDurationMs = Double(first.defaultLength.durationMs)
+            sfxDurationMs = Double(first.category.defaultDurationMs)
+            lengthId = nearestSFXLengthId(ms: Int(sfxDurationMs.rounded()))
             Task { @MainActor in suppressFineTuneReact = false }
         }
     }
@@ -1074,8 +1074,8 @@ struct StudioView: View {
         if soundType == .sfx {
             purposeGroup = "バトル"
             purposeId = Catalog.SFXPurpose.attackLight.rawValue
-            lengthId = Catalog.SFXPurpose.attackLight.defaultLength.rawValue
-            sfxDurationMs = Double(Catalog.SFXPurpose.attackLight.defaultLength.durationMs)
+            sfxDurationMs = Double(Catalog.SFXPurpose.attackLight.category.defaultDurationMs)
+            lengthId = nearestSFXLengthId(ms: Int(sfxDurationMs.rounded()))
             sfxNoteCount = 1
             moodId = Catalog.Mood.neutral.rawValue
             genreId = Catalog.Genre.cardBattle.rawValue

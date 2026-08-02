@@ -124,13 +124,6 @@ public struct SFXEngine: Sendable {
                 endFreq: (280 + 200 * Double(pattern.morph)) * pitch,
                 timbre: timbre, intensity: intensity, rng: &rng
             )
-        case .uiDoubleTap:
-            renderDoubleClick(
-                samples: &samples, sampleRate: sampleRate,
-                freq: (1000 + 900 * Double(pattern.bright)) * pitch,
-                gap: 0.04 + 0.05 * Double(pattern.morph),
-                timbre: timbre, intensity: intensity, shape: pattern.shape, rng: &rng
-            )
         case .cardDraw:
             renderPaperNoise(
                 samples: &samples, sampleRate: sampleRate,
@@ -141,7 +134,8 @@ public struct SFXEngine: Sendable {
             renderWhooshHit(
                 samples: &samples, sampleRate: sampleRate,
                 pitch: pitch, timbre: timbre, intensity: intensity,
-                hitAt: 0.25 + 0.5 * Double(pattern.morph), rng: &rng
+                hitAt: 0.55 + 0.25 * Double(pattern.morph),
+                thumpWeight: 0.85, rng: &rng
             )
         case .cardShuffle:
             renderCardShuffle(
@@ -168,11 +162,11 @@ public struct SFXEngine: Sendable {
                 decayMul: 0.7 + 0.9 * Double(pattern.snap), rng: &rng
             )
         case .attackHeavy:
-            renderNoiseBurstDown(
+            renderHeavySmash(
                 samples: &samples, sampleRate: sampleRate,
-                pitch: pitch, timbre: timbre, intensity: intensity, heavy: true,
-                startMul: 0.7 + 0.8 * Double(pattern.morph),
-                decayMul: 0.65 + 0.9 * Double(pattern.snap), rng: &rng
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                windup: 0.28 + 0.2 * Double(pattern.morph),
+                rumble: pattern.snap, rng: &rng
             )
         case .attackSlash:
             renderSlash(
@@ -192,6 +186,12 @@ public struct SFXEngine: Sendable {
                 pitch: pitch, timbre: timbre, intensity: intensity,
                 crackle: pattern.bright, rng: &rng
             )
+        case .attackBow:
+            renderBowShot(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                flight: 0.35 + 0.35 * Double(pattern.morph), rng: &rng
+            )
         case .damageTake:
             renderDamage(
                 samples: &samples, sampleRate: sampleRate,
@@ -208,8 +208,8 @@ public struct SFXEngine: Sendable {
             renderRisingSparkle(
                 samples: &samples, sampleRate: sampleRate,
                 pitch: pitch, timbre: timbre, intensity: intensity,
-                rise: 0.6 + 1.1 * Double(pattern.morph),
-                sparkle: pattern.bright, rng: &rng
+                rise: 0.35 + 0.7 * Double(pattern.morph),
+                sparkle: pattern.bright * 0.75, rng: &rng
             )
         case .magicFire:
             renderMagicFire(
@@ -218,16 +218,28 @@ public struct SFXEngine: Sendable {
                 roar: pattern.morph, rng: &rng
             )
         case .magicIce:
-            renderMagicIce(
+            renderMagicFreeze(
                 samples: &samples, sampleRate: sampleRate,
                 pitch: pitch, timbre: timbre, intensity: intensity,
-                shimmer: pattern.bright, motif: pattern.motifPick
+                crystallize: pattern.bright, morph: pattern.morph, rng: &rng
             )
         case .magicPoison:
             renderMagicPoison(
                 samples: &samples, sampleRate: sampleRate,
                 pitch: pitch, timbre: timbre, intensity: intensity,
                 bubble: 4 + pattern.motifPick * 2, rng: &rng
+            )
+        case .magicStorm:
+            renderMagicStorm(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                gust: pattern.morph, rng: &rng
+            )
+        case .magicBeam:
+            renderMagicBeam(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                focus: 0.4 + 0.5 * Double(pattern.bright), rng: &rng
             )
         case .heal:
             renderHealArp(
@@ -253,6 +265,36 @@ public struct SFXEngine: Sendable {
                 pitch: pitch, timbre: timbre, intensity: intensity,
                 flutter: pattern.snap, rng: &rng
             )
+        case .moveJump:
+            renderJump(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                spring: 0.45 + 0.4 * Double(pattern.morph), rng: &rng
+            )
+        case .moveLand:
+            renderLand(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                weight: 0.4 + 0.45 * Double(pattern.snap), rng: &rng
+            )
+        case .moveDash:
+            renderDash(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                burst: pattern.snap, rng: &rng
+            )
+        case .moveSwim:
+            renderSwim(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                splash: pattern.bright, rng: &rng
+            )
+        case .moveDoor:
+            renderDoorOpen(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                creek: pattern.morph, rng: &rng
+            )
         case .gachaSpin:
             renderGachaSpin(
                 samples: &samples, sampleRate: sampleRate,
@@ -263,19 +305,31 @@ public struct SFXEngine: Sendable {
             renderGachaRare(
                 samples: &samples, sampleRate: sampleRate,
                 pitch: pitch, timbre: timbre, intensity: intensity,
-                motif: pattern.motifPick, sparkle: pattern.bright, rng: &rng
+                sparkle: pattern.bright, morph: pattern.morph, rng: &rng
             )
         case .victory:
-            renderFanfare(
+            renderVictoryFanfare(
                 samples: &samples, sampleRate: sampleRate, duration: duration,
                 pitch: pitch, timbre: timbre, intensity: intensity,
-                ascending: true, motif: pattern.motifPick, shape: pattern.shape
+                motif: pattern.motifPick
             )
         case .defeat:
-            renderFanfare(
+            renderDefeatFanfare(
                 samples: &samples, sampleRate: sampleRate, duration: duration,
                 pitch: pitch, timbre: timbre, intensity: intensity,
-                ascending: false, motif: pattern.motifPick, shape: pattern.shape
+                motif: pattern.motifPick
+            )
+        case .fanfareSting:
+            renderJaJaan(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                motif: pattern.motifPick
+            )
+        case .fanfareCorrect:
+            renderPingPong(
+                samples: &samples, sampleRate: sampleRate,
+                pitch: pitch, timbre: timbre, intensity: intensity,
+                spacing: 0.02 + 0.03 * Double(pattern.morph)
             )
         }
     }
@@ -402,34 +456,6 @@ public struct SFXEngine: Sendable {
         }
     }
 
-    private func renderDoubleClick(
-        samples: inout [Float],
-        sampleRate: Double,
-        freq: Double,
-        gap: Double,
-        timbre: Float,
-        intensity: Float,
-        shape: WaveShape,
-        rng: inout SeededGenerator
-    ) {
-        let duration = Double(samples.count) / sampleRate
-        let clickDur = min(0.05, duration * 0.28)
-        let times = [0.0, gap]
-        for i in samples.indices {
-            let t = Double(i) / sampleRate
-            var sum: Float = 0
-            for start in times {
-                let local = t - start
-                guard local >= 0, local < clickDur * 2 else { continue }
-                let phase = freq * local
-                let env = Float(exp(-local / max(clickDur * 0.55, 0.005)))
-                let noise = rng.signedUnit() * (0.15 + 0.35 * timbre)
-                sum += (SynthDSP.osc(shape, phase: phase) * 0.7 + noise) * env
-            }
-            samples[i] = sum * (0.35 + 0.5 * intensity)
-        }
-    }
-
     // MARK: - Card
 
     private func renderPaperNoise(
@@ -466,21 +492,23 @@ public struct SFXEngine: Sendable {
         timbre: Float,
         intensity: Float,
         hitAt: Double,
+        thumpWeight: Float = 0.55,
         rng: inout SeededGenerator
     ) {
         let duration = Double(samples.count) / sampleRate
         let hitTime = duration * min(0.85, max(0.15, hitAt))
         var phase = 0.0
-        let thumpFreq = 160.0 + 140.0 * pitch
+        let thumpFreq = 120.0 + 100.0 * pitch
+        let tw = min(1, max(0.2, thumpWeight))
         for i in samples.indices {
             let t = Double(i) / sampleRate
-            let whooshEnv = Float(exp(-2.5 * t / duration)) * (0.35 + 0.5 * timbre)
+            let whooshEnv = Float(exp(-3.2 * t / duration)) * (0.25 + 0.35 * timbre)
             let noise = rng.signedUnit() * whooshEnv
             let hitDist = abs(t - hitTime)
-            let hit = Float(exp(-hitDist * (50 + 60 * Double(intensity)))) * (0.45 + 0.45 * intensity)
+            let hit = Float(exp(-hitDist * (55 + 70 * Double(intensity)))) * (0.5 + 0.45 * intensity)
             phase += thumpFreq / sampleRate
             let thump = SynthDSP.osc(.sine, phase: phase) * hit
-            samples[i] = noise * 0.55 + thump
+            samples[i] = noise * (1 - tw * 0.55) + thump * tw
         }
     }
 
@@ -523,16 +551,18 @@ public struct SFXEngine: Sendable {
         rng: inout SeededGenerator
     ) {
         let duration = Double(samples.count) / sampleRate
-        let snapAt = duration * (0.18 + 0.2 * Double(snap))
+        let snapAt = duration * (0.22 + 0.25 * Double(snap))
         var phase = 0.0
         for i in samples.indices {
             let t = Double(i) / sampleRate
-            let whoosh = Float(exp(-4.5 * t / duration)) * rng.signedUnit() * (0.25 + 0.4 * timbre)
+            // Light paper flutter, then bright high snap (distinct from card_play thump).
+            let whoosh = Float(exp(-5.5 * t / duration)) * rng.signedUnit() * (0.12 + 0.22 * timbre)
             let dist = abs(t - snapAt)
-            let click = Float(exp(-dist * 90)) * (0.55 + 0.35 * intensity)
-            phase += (1400 * pitch) / sampleRate
+            let click = Float(exp(-dist * 120)) * (0.65 + 0.3 * intensity)
+            phase += (1800 * pitch) / sampleRate
             let tip = SynthDSP.osc(.triangle, phase: phase) * click
-            samples[i] = whoosh * 0.7 + tip
+                + SynthDSP.osc(.sine, phase: phase * 2.2) * click * 0.35
+            samples[i] = whoosh * 0.45 + tip
         }
     }
 
@@ -592,6 +622,112 @@ public struct SFXEngine: Sendable {
         }
     }
 
+    /// Heavy attack: wind-up whoosh → low smash → rumble (distinct from bash thump).
+    private func renderHeavySmash(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        windup: Double,
+        rumble: Float,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        let hitAt = duration * min(0.55, max(0.22, windup))
+        var phase = 0.0
+        var rumblePhase = 0.0
+        let smashFreq = (70 + 45 * Double(rumble)) * pitch
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            let prog = t / max(duration, 0.0001)
+            var sum: Float = 0
+            if t < hitAt {
+                let local = t / max(hitAt, 0.0001)
+                let whoosh = rng.signedUnit() * Float(local) * (0.2 + 0.35 * timbre)
+                let rise = SynthDSP.osc(.saw, phase: (180 + 220 * local) * pitch * t)
+                    * Float(local) * 0.2
+                sum = whoosh + rise
+            } else {
+                let local = t - hitAt
+                let localProg = local / max(duration - hitAt, 0.0001)
+                phase += (smashFreq * (1.0 - 0.45 * localProg)) / sampleRate
+                rumblePhase += (38 * pitch) / sampleRate
+                let env = Float(exp(-(1.6 + 1.2 * Double(rumble)) * localProg))
+                let body = SynthDSP.osc(.sine, phase: phase) * 0.7
+                let sub = SynthDSP.osc(.sine, phase: rumblePhase) * (0.25 + 0.25 * rumble) * env
+                let grit = rng.signedUnit() * (0.12 + 0.25 * timbre) * env
+                sum = SynthDSP.softClip(body + sub + grit, drive: 2.0 + intensity) * env
+            }
+            let master = prog < 0.05 ? Float(prog / 0.05) : 1
+            samples[i] = sum * master * (0.42 + 0.48 * intensity)
+        }
+    }
+
+    /// ビュン（放ち）→ シュー（飛行）→ ブスッ（刺さる）
+    private func renderBowShot(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        flight: Double,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        let releaseEnd = duration * 0.16
+        let impactAt = duration * min(0.88, max(0.55, 0.58 + flight * 0.22))
+        var twangPhase = 0.0
+        var flyPhase = 0.0
+        var hp: Float = 0
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            var sum: Float = 0
+
+            // 1) ビュン — sharp string release with fast falling twang.
+            if t < releaseEnd {
+                let local = t / max(releaseEnd, 0.0001)
+                let twangF = (1400 - 900 * local) * pitch
+                twangPhase += twangF / sampleRate
+                let env = Float(exp(-local * 14))
+                let string = SynthDSP.osc(.triangle, phase: twangPhase) * 0.55
+                    + SynthDSP.osc(.sine, phase: twangPhase * 2.1) * 0.25
+                let pluck = rng.signedUnit() * Float(exp(-local * 40)) * 0.35
+                sum += (string + pluck) * env
+            }
+
+            // 2) シュー — sustained air whoosh while the arrow flies.
+            if t >= releaseEnd * 0.35, t < impactAt {
+                let flyT = t - releaseEnd * 0.35
+                let flyDur = max(impactAt - releaseEnd * 0.35, 0.0001)
+                let flyProg = flyT / flyDur
+                let n = rng.signedUnit()
+                hp = SynthDSP.mix(hp, n, t: 0.12 + 0.25 * timbre)
+                let air = (n - hp * 0.85) * (0.28 + 0.35 * timbre)
+                let whistleF = (700 - 280 * flyProg) * pitch
+                flyPhase += whistleF / sampleRate
+                let whistle = SynthDSP.osc(.sine, phase: flyPhase) * (0.12 + 0.1 * (1 - timbre))
+                let flyEnv = Float(sin(Double.pi * min(1, flyProg * 1.05))) * (0.55 + 0.35 * (1 - Float(flyProg)))
+                sum += (air + whistle) * flyEnv
+            }
+
+            // 3) ブスッ — short dull pierce / flesh impact.
+            let pierceLocal = t - impactAt
+            if pierceLocal >= 0, pierceLocal < 0.12 {
+                let thumpF = 110.0 * pitch
+                let thumpEnv = Float(exp(-pierceLocal * 45))
+                let body = SynthDSP.osc(.sine, phase: thumpF * pierceLocal) * thumpEnv * 0.7
+                let flesh = rng.signedUnit() * Float(exp(-pierceLocal * 55)) * (0.25 + 0.35 * timbre)
+                let tip = SynthDSP.osc(.triangle, phase: (380 * pitch) * pierceLocal)
+                    * Float(exp(-pierceLocal * 70)) * 0.25
+                sum += body + flesh + tip
+            }
+
+            samples[i] = SynthDSP.softClip(sum, drive: 1.15 + 0.4 * intensity) * (0.38 + 0.45 * intensity)
+        }
+    }
+
+    /// Sword slash: audible blade-whoosh arc + brief metal flash (not a ピューン whistle).
     private func renderSlash(
         samples: inout [Float],
         sampleRate: Double,
@@ -602,19 +738,47 @@ public struct SFXEngine: Sendable {
         rng: inout SeededGenerator
     ) {
         let duration = Double(samples.count) / sampleRate
-        var phase = 0.0
-        let f0 = (1800 + 1200 * whip) * pitch
+        var metalPhase = 0.0
+        var lp: Float = 0
+        var bp: Float = 0
+        // Peak of the cut a bit before halfway — acceleration into the swing.
+        let peakAt = 0.32 + 0.12 * whip
         for i in samples.indices {
             let t = Double(i) / sampleRate
             let prog = t / max(duration, 0.0001)
-            // Fast downward metallic whip, little low body.
-            let freq = f0 * (1.0 - 0.75 * prog)
-            phase += freq / sampleRate
-            let env = Float(exp(-(5.5 + 4 * whip) * prog))
-            let blade = SynthDSP.osc(.saw, phase: phase) * 0.45
-                + SynthDSP.osc(.square, phase: phase * 1.01) * 0.2
-            let air = rng.signedUnit() * (0.15 + 0.4 * timbre) * env
-            samples[i] = SynthDSP.softClip(blade + air, drive: 1.3 + intensity) * env * (0.4 + 0.45 * intensity)
+
+            // Arc envelope: clearly hear the swing start → peak → stop.
+            let rise = prog / max(peakAt, 0.001)
+            let fall = (1 - prog) / max(1 - peakAt, 0.001)
+            let arc = Float(min(rise, fall))
+            let env = max(0, arc * arc) // punchier peak
+
+            let n = rng.signedUnit()
+            // Two-pole-ish noise: blade cutting air (broadband, not a pitched tone).
+            lp = SynthDSP.mix(lp, n, t: 0.08 + 0.15 * timbre)
+            let mid = n - lp
+            bp = SynthDSP.mix(bp, mid, t: 0.25 + 0.2 * (1 - Float(whip)))
+            let whoosh = (mid * 0.65 + bp * 0.45) * env * (0.55 + 0.35 * timbre)
+
+            // Brightness rides the swing: duller on entry, sharper at peak, dulls out.
+            let brightGate = env * Float(0.5 + 0.5 * sin(Double.pi * min(1, prog * 1.05)))
+            let edge = (n - bp) * brightGate * (0.2 + 0.25 * Float(whip))
+
+            // Short metal flash near the peak only (~40ms) — 「キン」not「ピューン」.
+            let peakDist = abs(prog - peakAt)
+            let metalEnv = Float(exp(-peakDist * 28)) * env
+            let metalF = (1200 + 600 * whip) * pitch
+            metalPhase += metalF / sampleRate
+            let metal = SynthDSP.osc(.triangle, phase: metalPhase) * metalEnv * 0.22
+                + SynthDSP.osc(.square, phase: metalPhase * 1.5) * metalEnv * 0.08
+
+            // Light body so the cut has weight without becoming a bash.
+            let body = SynthDSP.osc(.sine, phase: (140 * pitch) * t)
+                * env * Float(exp(-prog * 3.5)) * 0.18
+
+            let mixed = whoosh + edge + metal + body
+            samples[i] = SynthDSP.softClip(mixed, drive: 1.35 + 0.7 * intensity)
+                * (0.42 + 0.48 * intensity)
         }
     }
 
@@ -782,35 +946,129 @@ public struct SFXEngine: Sendable {
         }
     }
 
-    private func renderMagicIce(
+    /// Freeze: ピキピキ accelerating crystal cracks as the target ices over.
+    private func renderMagicFreeze(
         samples: inout [Float],
         sampleRate: Double,
         pitch: Double,
         timbre: Float,
         intensity: Float,
-        shimmer: Float,
-        motif: Int
+        crystallize: Float,
+        morph: Float,
+        rng: inout SeededGenerator
     ) {
         let duration = Double(samples.count) / sampleRate
-        let freqs: [[Double]] = [
-            [880, 1320, 1760, 2200],
-            [988, 1480, 1976, 2637],
-            [1046, 1568, 2093, 2637],
-            [784, 1175, 1568, 2093],
-        ]
-        let notes = freqs[motif % freqs.count].map { $0 * pitch }
-        let noteLen = duration / Double(notes.count)
+        // Three clear ピキッ events (slight timing jitter from seed).
+        let crackCount = 3
+        let bases: [Double] = [0.22, 0.48, 0.72]
+        let crackTimes: [Double] = (0..<crackCount).map { k in
+            let jitter = (Double(rng.unit()) - 0.5) * 0.06
+            return duration * min(0.85, max(0.12, bases[k] + jitter + 0.04 * Double(morph)))
+        }
+
+        var bedPhase = 0.0
+        var glassPhase = 0.0
+        let bedStart = (220 + 80 * Double(morph)) * pitch
+        let bedEnd = (70 + 30 * Double(crystallize)) * pitch
+
         for i in samples.indices {
             let t = Double(i) / sampleRate
-            let idx = min(notes.count - 1, Int(t / max(noteLen, 0.0001)))
-            let local = t - Double(idx) * noteLen
-            let freq = notes[idx]
-            let phase = freq * local
-            let env = Float(exp(-local / max(noteLen * 0.45, 0.01)))
-            let glass = SynthDSP.osc(.sine, phase: phase)
-                + SynthDSP.osc(.triangle, phase: phase * 2.01) * (0.2 + 0.25 * shimmer)
-                + SynthDSP.osc(.sine, phase: phase * 3.02) * (0.08 + 0.12 * timbre)
-            samples[i] = glass * env * (0.28 + 0.4 * intensity)
+            let prog = t / max(duration, 0.0001)
+            let harden = Float(prog * prog) // ice takes hold
+            let master = Float(sin(Double.pi * min(1, prog * 1.04)))
+
+            // Cold bed: quiet contracting tone under the cracks.
+            let bedF = bedStart + (bedEnd - bedStart) * Double(harden)
+            bedPhase += bedF / sampleRate
+            let bed = SynthDSP.osc(.sine, phase: bedPhase) * (0.12 + 0.18 * harden)
+                * (0.35 + 0.65 * master)
+
+            // Thin icy shimmer (not melodic) — glass grain.
+            glassPhase += (1400 + 900 * Double(crystallize)) * pitch / sampleRate
+            let shimmer = SynthDSP.osc(.triangle, phase: glassPhase)
+                * (0.04 + 0.1 * crystallize) * harden * master
+            let air = rng.signedUnit() * (0.03 + 0.08 * timbre) * (1 - harden * 0.6) * master
+
+            // ピキッ ×3: each crack a bit brighter / sharper than the last.
+            var cracks: Float = 0
+            for (idx, ct) in crackTimes.enumerated() {
+                let local = t - ct
+                guard local >= 0, local < 0.055 else { continue }
+                let brightness = 0.45 + 0.275 * Float(idx) // 0.45 / 0.725 / 1.0
+                let pingF = (1600 + 1200 * Double(brightness) + 350 * Double(crystallize)) * pitch
+                let env = Float(exp(-local * (48 + 28 * Double(brightness))))
+                let ping = SynthDSP.osc(.sine, phase: pingF * local) * 0.65
+                    + SynthDSP.osc(.triangle, phase: pingF * 2.2 * local) * 0.3
+                let chip = rng.signedUnit() * Float(exp(-local * 80)) * (0.22 + 0.28 * timbre)
+                cracks += (ping + chip) * env * (0.7 + 0.35 * brightness)
+            }
+
+            // Final solid lock — ice fully set.
+            var lock: Float = 0
+            if prog > 0.82 {
+                let local = (prog - 0.82) / 0.18
+                let lockEnv = Float(exp(-local * 6)) * Float(sin(Double.pi * min(1, local * 1.2)))
+                lock = SynthDSP.osc(.sine, phase: (920 * pitch) * t) * lockEnv * 0.28
+                    + SynthDSP.osc(.triangle, phase: (1380 * pitch) * t) * lockEnv * 0.12
+            }
+
+            samples[i] = (bed + shimmer + air + cracks * (0.85 + 0.25 * crystallize) + lock)
+                * (0.34 + 0.46 * intensity)
+        }
+    }
+
+    private func renderMagicStorm(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        gust: Float,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        var lp: Float = 0
+        var phase = 0.0
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            let prog = t / max(duration, 0.0001)
+            let n = rng.signedUnit()
+            lp = SynthDSP.mix(lp, n, t: 0.05 + 0.12 * timbre)
+            let rumble = lp * (0.45 + 0.35 * gust)
+            let howlF = (90 + 70 * Double(gust)) * pitch * (1.0 + 0.25 * sin(t * 3.5))
+            phase += howlF / sampleRate
+            let howl = SynthDSP.osc(.sine, phase: phase) * (0.12 + 0.15 * (1 - timbre))
+            let gustPulse = Float(0.55 + 0.45 * sin(t * Double.pi * (2.5 + 2 * Double(gust))))
+            let env = Float(sin(Double.pi * min(1, prog * 1.05)))
+            samples[i] = (rumble * gustPulse + howl + n * 0.08) * env * (0.35 + 0.45 * intensity)
+        }
+    }
+
+    private func renderMagicBeam(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        focus: Double,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        var phase = 0.0
+        var phase2 = 0.2
+        let f0 = (380 + 260 * focus) * pitch
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            let prog = t / max(duration, 0.0001)
+            let attack = min(1, prog / 0.08)
+            let release = prog > 0.85 ? Float((1 - prog) / 0.15) : 1
+            let vib = 1.0 + 0.015 * sin(t * 40)
+            phase += (f0 * vib) / sampleRate
+            phase2 += (f0 * 1.5 * vib) / sampleRate
+            let core = SynthDSP.osc(.sine, phase: phase) * 0.55
+                + SynthDSP.osc(.saw, phase: phase2) * (0.08 + 0.12 * Float(focus))
+            let floor = rng.signedUnit() * (0.04 + 0.1 * timbre)
+            samples[i] = (core + floor) * Float(attack) * release * (0.35 + 0.45 * intensity)
         }
     }
 
@@ -925,6 +1183,139 @@ public struct SFXEngine: Sendable {
         }
     }
 
+    private func renderJump(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        spring: Double,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        var phase = 0.0
+        let f0 = (280 + 160 * spring) * pitch
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            let prog = t / max(duration, 0.0001)
+            // Rising spring tone + soft air.
+            let freq = f0 * (1.0 + 1.4 * prog)
+            phase += freq / sampleRate
+            let env = Float(exp(-prog * 3.2)) * Float(sin(Double.pi * min(1, prog * 1.3)))
+            let boing = SynthDSP.osc(.sine, phase: phase) * 0.55
+                + SynthDSP.osc(.triangle, phase: phase * 1.01) * 0.2
+            let air = rng.signedUnit() * env * (0.1 + 0.2 * timbre)
+            samples[i] = (boing + air) * env * (0.35 + 0.4 * intensity)
+        }
+    }
+
+    private func renderLand(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        weight: Double,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        var phase = 0.0
+        let thumpF = (70 + 50 * weight) * pitch
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            let prog = t / max(duration, 0.0001)
+            phase += (thumpF * (1.0 - 0.45 * prog)) / sampleRate
+            let env = Float(exp(-prog * (5.5 + 3 * weight)))
+            let body = SynthDSP.osc(.sine, phase: phase) * 0.7
+            let grit = rng.signedUnit() * env * (0.15 + 0.3 * timbre)
+            samples[i] = (body + grit) * env * (0.4 + 0.45 * intensity)
+        }
+    }
+
+    private func renderDash(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        burst: Float,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        var phase = 0.0
+        var hp: Float = 0
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            let prog = t / max(duration, 0.0001)
+            let n = rng.signedUnit()
+            hp = SynthDSP.mix(hp, n, t: 0.15 + 0.25 * timbre)
+            let whoosh = (n - hp * 0.8) * Float(exp(-prog * (3.5 + 2 * Double(burst))))
+            phase += (420 + 500 * Double(burst)) * pitch * (1.0 + prog) / sampleRate
+            let edge = SynthDSP.osc(.saw, phase: phase) * Float(exp(-prog * 6)) * 0.2
+            samples[i] = (whoosh * (0.55 + 0.3 * timbre) + edge) * (0.38 + 0.42 * intensity)
+        }
+    }
+
+    private func renderSwim(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        splash: Float,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        var lp: Float = 0
+        var phase = 0.0
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            let prog = t / max(duration, 0.0001)
+            let n = rng.signedUnit()
+            lp = SynthDSP.mix(lp, n, t: 0.12 + 0.2 * timbre)
+            let water = lp * (0.4 + 0.25 * splash)
+            let bubbleGate = abs(sin(t * 14 + Double(splash))) > 0.88
+            let bubble = bubbleGate ? abs(rng.signedUnit()) * (0.15 + 0.2 * splash) : 0
+            phase += (90 + 40 * sin(t * 6)) * pitch / sampleRate
+            let surge = SynthDSP.osc(.sine, phase: phase) * Float(sin(Double.pi * min(1, prog * 1.05))) * 0.15
+            samples[i] = (water + bubble + surge) * (0.35 + 0.4 * intensity)
+        }
+    }
+
+    private func renderDoorOpen(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        creek: Float,
+        rng: inout SeededGenerator
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        let latchAt = duration * 0.12
+        var phase = 0.0
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            var sum: Float = 0
+            // Latch click.
+            let latchLocal = t - latchAt
+            if abs(latchLocal) < 0.04 {
+                sum += rng.signedUnit() * Float(exp(-abs(latchLocal) * 70)) * 0.45
+            }
+            // Wood creak / swing.
+            if t > latchAt {
+                let local = t - latchAt
+                let localProg = local / max(duration - latchAt, 0.0001)
+                let creakF = (180 + 120 * Double(creek) + 80 * sin(local * 9)) * pitch
+                phase += creakF / sampleRate
+                let env = Float(sin(Double.pi * min(1, localProg * 1.05)))
+                sum += SynthDSP.osc(.saw, phase: phase) * env * (0.2 + 0.15 * timbre)
+                sum += rng.signedUnit() * env * (0.06 + 0.1 * timbre)
+            }
+            samples[i] = sum * (0.35 + 0.4 * intensity)
+        }
+    }
+
     // MARK: - Gacha
 
     private func renderGachaSpin(
@@ -955,94 +1346,227 @@ public struct SFXEngine: Sendable {
         }
     }
 
+    /// Gacha rare: rising sparkle expectation → shimmer release (no victory fanfare).
     private func renderGachaRare(
         samples: inout [Float],
         sampleRate: Double,
         pitch: Double,
         timbre: Float,
         intensity: Float,
-        motif: Int,
         sparkle: Float,
+        morph: Float,
         rng: inout SeededGenerator
     ) {
         let duration = Double(samples.count) / sampleRate
-        // Intro sparkle rise, then bright fanfare cascade.
-        let split = duration * 0.35
-        let notes: [[Double]] = [
-            [523.25, 659.25, 783.99, 1046.5, 1318.5],
-            [587.33, 740.0, 880.0, 1174.7, 1480.0],
-            [659.25, 830.61, 987.77, 1318.5, 1661.2],
-            [698.46, 880.0, 1046.5, 1396.9, 1760.0],
-        ]
-        let table = notes[motif % notes.count].map { $0 * pitch }
+        let split = duration * (0.55 + 0.1 * Double(morph))
         for i in samples.indices {
             let t = Double(i) / sampleRate
             if t < split {
                 let prog = t / max(split, 0.0001)
-                let f = (400 + 1600 * prog) * pitch
+                let f = (320 + 1400 * prog) * pitch
                 let env = Float(sin(Double.pi * 0.5 * prog))
-                let spark = rng.signedUnit() * (0.1 + 0.35 * sparkle) * env
-                let tone = SynthDSP.osc(.sine, phase: f * t) * 0.5
-                    + SynthDSP.osc(.triangle, phase: f * 1.5 * t) * (0.15 + 0.2 * timbre)
+                let spark = rng.signedUnit() * (0.12 + 0.4 * sparkle) * env
+                let tone = SynthDSP.osc(.sine, phase: f * t) * 0.45
+                    + SynthDSP.osc(.triangle, phase: f * 1.7 * t) * (0.1 + 0.2 * timbre)
                 samples[i] = (tone + spark) * env * (0.35 + 0.4 * intensity)
             } else {
-                let localT = t - split
-                let localDur = duration - split
-                let noteLen = localDur / Double(table.count)
-                let idx = min(table.count - 1, Int(localT / max(noteLen, 0.0001)))
-                let local = localT - Double(idx) * noteLen
-                let freq = table[idx]
-                let env = ADSR(attack: 0.008, decay: 0.04, sustain: 0.55, release: noteLen * 0.35)
-                    .level(at: local, duration: noteLen)
-                let tone = SynthDSP.osc(.square, phase: freq * local) * 0.45
-                    + SynthDSP.osc(.sine, phase: freq * 1.5 * local) * (0.2 + 0.2 * timbre)
-                let glitter = rng.signedUnit() * env * (0.05 + 0.15 * sparkle)
-                samples[i] = (tone + glitter) * env * (0.35 + 0.45 * intensity)
+                let local = t - split
+                let localDur = max(duration - split, 0.0001)
+                let prog = local / localDur
+                let burst = Float(exp(-prog * 4.5))
+                let shimmer = rng.signedUnit() * burst * (0.2 + 0.45 * sparkle)
+                let bell = SynthDSP.osc(.sine, phase: (1200 + 400 * Double(sparkle)) * pitch * local)
+                    * burst * 0.45
+                    + SynthDSP.osc(.triangle, phase: (1800 * pitch) * local) * burst * (0.15 + 0.15 * timbre)
+                samples[i] = (bell + shimmer) * (0.38 + 0.42 * intensity)
             }
         }
     }
 
-    // MARK: - Result
+    // MARK: - Result / Fanfare
 
-    private func renderFanfare(
+    /// テッテレー — short-short-short-long major clear jingle.
+    private func renderVictoryFanfare(
         samples: inout [Float],
         sampleRate: Double,
         duration: Double,
         pitch: Double,
         timbre: Float,
         intensity: Float,
-        ascending: Bool,
-        motif: Int,
-        shape: WaveShape
+        motif: Int
     ) {
-        let up: [[Double]] = [
-            [392.0, 523.25, 659.25, 783.99],
-            [440.0, 554.37, 659.25, 880.0],
-            [349.23, 523.25, 698.46, 880.0],
-            [523.25, 659.25, 783.99, 1046.5],
+        let motifs: [[Double]] = [
+            [392.0, 523.25, 659.25, 784.0],   // G C E G
+            [523.25, 659.25, 783.99, 1046.5], // C E G C
+            [440.0, 554.37, 659.25, 880.0],   // A C# E A
+            [349.23, 440.0, 523.25, 698.46],  // F A C F
         ]
-        let down: [[Double]] = [
-            [392.0, 349.23, 293.66, 220.0],
-            [440.0, 349.23, 293.66, 246.94],
-            [523.25, 392.0, 329.63, 261.63],
-            [349.23, 293.66, 246.94, 196.0],
-        ]
-        let table = ascending ? up : down
-        let notes = table[motif % table.count].map { $0 * pitch }
-        let noteLen = duration / Double(notes.count)
+        let notes = motifs[motif % motifs.count].map { $0 * pitch }
+        // Rhythm weights: テ・テ・テ・レー
+        let weights: [Double] = [1, 1, 1, 2.4]
+        let totalW = weights.reduce(0, +)
+        var starts: [Double] = []
+        var lens: [Double] = []
+        var acc = 0.0
+        for w in weights {
+            starts.append(duration * acc / totalW)
+            lens.append(duration * w / totalW)
+            acc += w
+        }
+
         for i in samples.indices {
             let t = Double(i) / sampleRate
-            let idx = min(notes.count - 1, Int(t / max(noteLen, 0.0001)))
-            let local = t - Double(idx) * noteLen
-            let freq = notes[idx]
-            let phase = freq * local
-            let fifth = freq * 1.5 * local
-            let env = ADSR(attack: 0.01, decay: 0.05, sustain: 0.55, release: noteLen * 0.35)
-                .level(at: local, duration: noteLen)
-            let tone = SynthDSP.osc(shape, phase: phase) * 0.65
-                + SynthDSP.osc(.sine, phase: fifth) * (0.15 + 0.2 * timbre)
-            let darken: Float = ascending ? 1 : 0.7
-            samples[i] = tone * env * darken * (0.3 + 0.45 * intensity)
+            var sum: Float = 0
+            for (idx, freq) in notes.enumerated() {
+                let local = t - starts[idx]
+                guard local >= 0, local < lens[idx] + 0.04 else { continue }
+                let env = ADSR(attack: 0.008, decay: 0.04, sustain: idx == 3 ? 0.55 : 0.25, release: lens[idx] * 0.35)
+                    .level(at: local, duration: lens[idx])
+                // Brass-ish square + sine (classic game clear).
+                let brass = SynthDSP.osc(.square, phase: freq * local) * 0.4
+                    + SynthDSP.osc(.sine, phase: freq * local) * 0.35
+                    + SynthDSP.osc(.sine, phase: freq * 1.5 * local) * (0.12 + 0.15 * timbre)
+                sum += brass * env
+            }
+            samples[i] = SynthDSP.softClip(sum, drive: 1.15 + 0.35 * intensity) * (0.34 + 0.45 * intensity)
+        }
+    }
+
+    /// デデデーン — descending sad sting, last note longer.
+    private func renderDefeatFanfare(
+        samples: inout [Float],
+        sampleRate: Double,
+        duration: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        motif: Int
+    ) {
+        let motifs: [[Double]] = [
+            [392.0, 349.23, 293.66, 220.0],   // G F D A
+            [440.0, 392.0, 329.63, 246.94],   // A G E B
+            [523.25, 440.0, 349.23, 261.63],  // C A F C
+            [349.23, 311.13, 246.94, 185.0],  // F Eb B G
+        ]
+        let notes = motifs[motif % motifs.count].map { $0 * pitch }
+        let weights: [Double] = [1, 1, 1, 2.6]
+        let totalW = weights.reduce(0, +)
+        var starts: [Double] = []
+        var lens: [Double] = []
+        var acc = 0.0
+        for w in weights {
+            starts.append(duration * acc / totalW)
+            lens.append(duration * w / totalW)
+            acc += w
+        }
+
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            var sum: Float = 0
+            for (idx, freq) in notes.enumerated() {
+                let local = t - starts[idx]
+                guard local >= 0, local < lens[idx] + 0.05 else { continue }
+                let env = ADSR(attack: 0.01, decay: 0.05, sustain: idx == 3 ? 0.4 : 0.2, release: lens[idx] * 0.4)
+                    .level(at: local, duration: lens[idx])
+                let tone = SynthDSP.osc(.triangle, phase: freq * local) * 0.45
+                    + SynthDSP.osc(.sine, phase: freq * local) * 0.35
+                    + SynthDSP.osc(.sine, phase: freq * 0.5 * local) * (0.12 + 0.1 * timbre)
+                sum += tone * env
+            }
+            samples[i] = sum * 0.72 * (0.3 + 0.4 * intensity)
+        }
+    }
+
+    /// ジャジャーン — two-hit dramatic major chord reveal.
+    private func renderJaJaan(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        motif: Int
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        // Open major chords (C / D / G / F).
+        let chords: [[Double]] = [
+            [261.63, 329.63, 392.0, 523.25],
+            [293.66, 369.99, 440.0, 587.33],
+            [196.0, 246.94, 293.66, 392.0],
+            [174.61, 220.0, 261.63, 349.23],
+        ]
+        let chord = chords[motif % chords.count].map { $0 * pitch }
+        let hit1 = 0.0
+        let hit2 = duration * 0.22
+
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            var sum: Float = 0
+            for (hitIdx, start) in [hit1, hit2].enumerated() {
+                let local = t - start
+                guard local >= 0 else { continue }
+                let hitDur = hitIdx == 0 ? duration * 0.28 : duration - start
+                let env = ADSR(
+                    attack: 0.012,
+                    decay: hitIdx == 0 ? 0.08 : 0.12,
+                    sustain: hitIdx == 0 ? 0.2 : 0.5,
+                    release: hitDur * 0.4
+                ).level(at: local, duration: hitDur)
+                let weight: Float = hitIdx == 0 ? 0.75 : 1.0
+                for (n, freq) in chord.enumerated() {
+                    let amp: Float = n == 0 ? 0.28 : (n == chord.count - 1 ? 0.3 : 0.2)
+                    // Brass / orchestral sting character.
+                    sum += SynthDSP.osc(.saw, phase: freq * local) * amp * 0.45 * weight * env
+                    sum += SynthDSP.osc(.square, phase: freq * local) * amp * 0.25 * weight * env
+                    sum += SynthDSP.osc(.sine, phase: freq * 1.5 * local) * amp * (0.15 + 0.15 * timbre) * weight * env
+                }
+            }
+            samples[i] = SynthDSP.softClip(sum, drive: 1.25 + 0.5 * intensity) * (0.32 + 0.45 * intensity)
+        }
+    }
+
+    /// Japanese ピンポーン (doorbell / quiz correct): high short ピン → lower ringing ポーン.
+    private func renderPingPong(
+        samples: inout [Float],
+        sampleRate: Double,
+        pitch: Double,
+        timbre: Float,
+        intensity: Float,
+        spacing: Double
+    ) {
+        let duration = Double(samples.count) / sampleRate
+        // Typical intercom peaks ~850Hz then ~680Hz (high → low, ~major 3rd).
+        let pinFreq = 880.0 * pitch   // A5 — ピン
+        let ponFreq = 698.46 * pitch  // F5 — ポーン
+        let pinDur = min(0.16, duration * 0.32)
+        let ponStart = pinDur + max(0.015, min(0.05, spacing))
+        let ponDur = max(0.22, duration - ponStart)
+
+        for i in samples.indices {
+            let t = Double(i) / sampleRate
+            var sum: Float = 0
+
+            // ピン — shorter, brighter, soft attack.
+            if t < pinDur + 0.08 {
+                let local = t
+                let env = ADSR(attack: 0.012, decay: 0.05, sustain: 0.15, release: 0.07)
+                    .level(at: local, duration: pinDur)
+                let tone = SynthDSP.osc(.sine, phase: pinFreq * local) * 0.7
+                    + SynthDSP.osc(.sine, phase: pinFreq * 2 * local) * (0.08 + 0.1 * (1 - timbre))
+                sum += tone * env
+            }
+
+            // ポーン — lower, longer ring (the recognizable 「ポーン」).
+            if t >= ponStart {
+                let local = t - ponStart
+                let env = ADSR(attack: 0.014, decay: 0.08, sustain: 0.35, release: ponDur * 0.45)
+                    .level(at: local, duration: ponDur)
+                let tone = SynthDSP.osc(.sine, phase: ponFreq * local) * 0.72
+                    + SynthDSP.osc(.sine, phase: ponFreq * 2 * local) * (0.1 + 0.12 * (1 - timbre))
+                    + SynthDSP.osc(.triangle, phase: ponFreq * local) * (0.06 * timbre)
+                sum += tone * env
+            }
+
+            samples[i] = sum * (0.36 + 0.42 * intensity)
         }
     }
 }

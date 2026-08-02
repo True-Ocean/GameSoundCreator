@@ -190,7 +190,6 @@ public enum Catalog {
         case uiCancel = "ui_cancel"
         case uiBack = "ui_back"
         case uiSwipe = "ui_swipe"
-        case uiDoubleTap = "ui_double_tap"
         // カード
         case cardDraw = "card_draw"
         case cardPlay = "card_play"
@@ -203,6 +202,7 @@ public enum Catalog {
         case attackSlash = "attack_slash"
         case attackBash = "attack_bash"
         case attackBreak = "attack_break"
+        case attackBow = "attack_bow"
         case damageTake = "damage_take"
         case defend = "defend"
         // 魔法・状態
@@ -210,17 +210,26 @@ public enum Catalog {
         case magicFire = "magic_fire"
         case magicIce = "magic_ice"
         case magicPoison = "magic_poison"
+        case magicStorm = "magic_storm"
+        case magicBeam = "magic_beam"
         case heal = "heal"
         // 動作
         case moveWalk = "move_walk"
         case moveRun = "move_run"
         case moveFly = "move_fly"
+        case moveJump = "move_jump"
+        case moveLand = "move_land"
+        case moveDash = "move_dash"
+        case moveSwim = "move_swim"
+        case moveDoor = "move_door"
         // ガチャ
         case gachaSpin = "gacha_spin"
         case gachaRare = "gacha_rare"
-        // 結果
+        // ファンファーレ
         case victory = "victory"
         case defeat = "defeat"
+        case fanfareSting = "fanfare_sting"
+        case fanfareCorrect = "fanfare_correct"
 
         public var displayName: String {
             switch self {
@@ -229,7 +238,6 @@ public enum Catalog {
             case .uiCancel: return "キャンセル"
             case .uiBack: return "戻る"
             case .uiSwipe: return "スワイプ"
-            case .uiDoubleTap: return "ダブルタップ"
             case .cardDraw: return "ドロー"
             case .cardPlay: return "カードを出す"
             case .cardShuffle: return "シャッフル"
@@ -240,33 +248,47 @@ public enum Catalog {
             case .attackSlash: return "斬る"
             case .attackBash: return "叩く"
             case .attackBreak: return "割る"
+            case .attackBow: return "弓攻撃"
             case .damageTake: return "被ダメージ"
             case .defend: return "防御"
             case .skillCast: return "スキル発動"
             case .magicFire: return "炎魔法"
             case .magicIce: return "氷魔法"
             case .magicPoison: return "毒"
+            case .magicStorm: return "嵐"
+            case .magicBeam: return "ビーム照射"
             case .heal: return "癒し / 回復"
             case .moveWalk: return "歩く"
             case .moveRun: return "走る"
             case .moveFly: return "飛ぶ"
+            case .moveJump: return "ジャンプ"
+            case .moveLand: return "着地"
+            case .moveDash: return "ダッシュ"
+            case .moveSwim: return "泳ぐ"
+            case .moveDoor: return "扉を開く"
             case .gachaSpin: return "ガチャ回転"
             case .gachaRare: return "レア演出"
             case .victory: return "勝利"
             case .defeat: return "敗北"
+            case .fanfareSting: return "ジャジャーン"
+            case .fanfareCorrect: return "ピンポーン"
             }
         }
 
         public var group: String {
             switch self {
-            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe, .uiDoubleTap: return "UI"
+            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe: return "UI"
             case .cardDraw, .cardPlay, .cardShuffle, .cardFlip, .cardDiscard: return "カード"
-            case .attackLight, .attackHeavy, .attackSlash, .attackBash, .attackBreak, .damageTake, .defend:
+            case .attackLight, .attackHeavy, .attackSlash, .attackBash, .attackBreak,
+                 .attackBow, .damageTake, .defend:
                 return "バトル"
-            case .skillCast, .magicFire, .magicIce, .magicPoison, .heal: return "魔法・状態"
-            case .moveWalk, .moveRun, .moveFly: return "動作"
+            case .skillCast, .magicFire, .magicIce, .magicPoison, .magicStorm, .magicBeam, .heal:
+                return "魔法・状態"
+            case .moveWalk, .moveRun, .moveFly, .moveJump, .moveLand, .moveDash, .moveSwim, .moveDoor:
+                return "動作"
             case .gachaSpin, .gachaRare: return "ガチャ"
-            case .victory, .defeat: return "結果"
+            case .victory, .defeat, .fanfareSting, .fanfareCorrect:
+                return "ファンファーレ"
             }
         }
 
@@ -274,10 +296,11 @@ public enum Catalog {
 
         public var defaultLength: SFXLength {
             switch self {
-            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe, .uiDoubleTap,
-                 .moveWalk, .moveRun:
+            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe,
+                 .moveWalk, .moveRun, .moveJump, .moveLand, .moveDash:
                 return .short
-            case .victory, .defeat, .skillCast, .heal, .gachaRare, .magicFire, .magicIce:
+            case .victory, .defeat, .skillCast, .heal, .gachaRare, .magicFire, .magicIce,
+                 .magicStorm, .magicBeam, .attackHeavy, .fanfareSting:
                 return .long
             default:
                 return .medium
@@ -292,7 +315,6 @@ public enum Catalog {
             case .uiCancel: return .uiCancel
             case .uiBack: return .uiBack
             case .uiSwipe: return .uiSwipe
-            case .uiDoubleTap: return .uiDoubleTap
             case .cardDraw: return .cardDraw
             case .cardPlay: return .cardPlay
             case .cardShuffle: return .cardShuffle
@@ -303,20 +325,30 @@ public enum Catalog {
             case .attackSlash: return .attackSlash
             case .attackBash: return .attackBash
             case .attackBreak: return .attackBreak
+            case .attackBow: return .attackBow
             case .damageTake: return .damageTake
             case .defend: return .defend
             case .skillCast: return .skillCast
             case .magicFire: return .magicFire
             case .magicIce: return .magicIce
             case .magicPoison: return .magicPoison
+            case .magicStorm: return .magicStorm
+            case .magicBeam: return .magicBeam
             case .heal: return .heal
             case .moveWalk: return .moveWalk
             case .moveRun: return .moveRun
             case .moveFly: return .moveFly
+            case .moveJump: return .moveJump
+            case .moveLand: return .moveLand
+            case .moveDash: return .moveDash
+            case .moveSwim: return .moveSwim
+            case .moveDoor: return .moveDoor
             case .gachaSpin: return .gachaSpin
             case .gachaRare: return .gachaRare
             case .victory: return .victory
             case .defeat: return .defeat
+            case .fanfareSting: return .fanfareSting
+            case .fanfareCorrect: return .fanfareCorrect
             }
         }
     }
@@ -519,7 +551,7 @@ public enum Catalog {
     }
 
     /// Stable order for SE purpose browsing.
-    public static let sfxPurposeGroupOrder = ["UI", "カード", "バトル", "魔法・状態", "動作", "ガチャ", "結果"]
+    public static let sfxPurposeGroupOrder = ["UI", "カード", "バトル", "魔法・状態", "動作", "ガチャ", "ファンファーレ"]
 
     public static func sfxPurposes(in group: String) -> [SFXPurpose] {
         SFXPurpose.allCases.filter { $0.isAvailable && $0.group == group }
