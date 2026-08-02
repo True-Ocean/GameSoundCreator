@@ -379,7 +379,16 @@ final class AudioGenCoreTests: XCTestCase {
 
         let organ = InstrumentPalette.from(instrumentId: "organ")
         XCTAssertTrue(organ.sustainChords)
-        XCTAssertGreaterThan(organ.chordEnv.attack, 0.05)
+        XCTAssertEqual(organ.chordShape, .triangle)
+        XCTAssertEqual(organ.leadShape, .triangle)
+        XCTAssertEqual(organ.bassShape, .sine)
+        XCTAssertGreaterThan(organ.leadEnv.attack, 0.12)
+        XCTAssertGreaterThan(organ.leadEnv.sustain, 0.75)
+        XCTAssertGreaterThan(organ.leadDurationScale, 1.5)
+        XCTAssertLessThan(organ.drumAmpScale, 0.45)
+        XCTAssertLessThan(organ.leadFM.index, 0.4)
+        XCTAssertGreaterThan(organ.chordTail.fmDecay, 0.3)
+        XCTAssertEqual(organ.chordTail.ringOut, 0, accuracy: 0.001)
 
         let guitar = InstrumentPalette.from(instrumentId: "guitar")
         XCTAssertFalse(guitar.sustainChords)

@@ -615,8 +615,8 @@ struct StudioView: View {
                     .tint(theme.accent)
                 }
 
-                studioMenuRow(title: "音色") {
-                    Picker("音色", selection: bgmInstrumentIdBinding) {
+                studioMenuRow(title: "音色イメージ") {
+                    Picker("音色イメージ", selection: bgmInstrumentIdBinding) {
                         ForEach(Catalog.instruments) { item in
                             Text(item.displayName).tag(item.id)
                         }
@@ -719,7 +719,7 @@ struct StudioView: View {
 
     // MARK: Catalog bindings
     // BGM UI order mirrors behavior:
-    //   シーン／詳細／音色／長さ → 停止して再生待ち
+    //   シーン／詳細／音色イメージ／長さ → 停止して再生待ち
     //   雰囲気・テンポ／ピッチ／リズム・メロディ → 再生中は旧音継続のまま再生成し切替
     //   ループ → 再生位置を保ったまま即反映
 

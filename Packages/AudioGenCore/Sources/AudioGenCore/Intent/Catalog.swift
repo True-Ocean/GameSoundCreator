@@ -306,7 +306,7 @@ public enum Catalog {
         }
     }
 
-    /// BGM 音色プリセット（Phase 3.5）。SE では未使用。
+    /// BGM 音色イメージ（Phase 3.5）。SE では未使用。
     public enum Instrument: String, CaseIterable, Sendable {
         case leadSynth = "lead_synth"
         case piano = "piano"
@@ -319,19 +319,19 @@ public enum Catalog {
         public var displayName: String {
             switch self {
             case .leadSynth: return "シンセリード"
-            case .piano: return "ピアノ風"
+            case .piano: return "ピアノ"
             case .pad: return "パッド"
             case .bass: return "ベース"
             case .musicBox: return "オルゴール"
             case .organ: return "オルガン"
-            case .guitar: return "ギター風"
+            case .guitar: return "ギター"
             }
         }
 
         public var hint: String {
             switch self {
             case .leadSynth: return "キビキビしたメロディ向き。戦闘に合う"
-            case .piano: return "アタックのはっきりした鍵盤風。メニュー向き"
+            case .piano: return "アタックのはっきりした鍵盤寄り。メニュー向き"
             case .pad: return "ゆっくり広がる厚み。雰囲気・敗北寄り"
             case .bass: return "低音を前面に。探索・ダンジョン向き"
             case .musicBox: return "高いキラキラのプラック。ショップ・ガチャ向き"
