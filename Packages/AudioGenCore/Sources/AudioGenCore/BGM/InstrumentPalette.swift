@@ -63,37 +63,37 @@ struct InstrumentPalette: Sendable {
     static func from(instrumentId: String) -> InstrumentPalette {
         switch Catalog.Instrument.resolve(instrumentId) {
         case .leadSynth:
-            // Lead is the star: metallic FM on melody, thin chords, solid bass/drums.
+            // Retro square lead: punchy attack, moderated FM, short ring so edges aren't clicky.
             return InstrumentPalette(
                 chordShape: .triangle,
                 bassShape: .saw,
                 leadShape: .square,
                 chordEnv: ADSR(attack: 0.01, decay: 0.08, sustain: 0.4, release: 0.1),
                 bassEnv: ADSR(attack: 0.005, decay: 0.06, sustain: 0.55, release: 0.08),
-                leadEnv: ADSR(attack: 0.004, decay: 0.06, sustain: 0.48, release: 0.09),
-                chordAmpScale: 0.72,
-                bassAmpScale: 1.05,
-                leadAmpScale: 1.45,
+                leadEnv: ADSR(attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.15),
+                chordAmpScale: 0.6,
+                bassAmpScale: 0.95,
+                leadAmpScale: 1.4,
                 chordDurationScale: 0.85,
                 bassDurationScale: 0.95,
-                leadDurationScale: 1.08,
-                muteBias: -0.08,
+                leadDurationScale: 1.05,
+                muteBias: 0.08,
                 leadOctaveBias: 0,
                 chordOctaveBias: 0,
                 melodyChanceScale: 1.25,
                 sustainChords: false,
-                filterCutoffScale: 1.15,
-                reverbMixBias: -0.03,
+                filterCutoffScale: 1.0,
+                reverbMixBias: 0.04,
                 chordFM: FMTone(ratio: 1.0, index: 0.35),
                 bassFM: FMTone(ratio: 0.5, index: 0.25),
-                leadFM: FMTone(ratio: 2.0, index: 1.35),
-                drumAmpScale: 1.05,
+                leadFM: FMTone(ratio: 2.0, index: 0.85),
+                drumAmpScale: 1.0,
                 chordUpperAtten: 0.35,
                 bassRootHeavy: false,
-                hatAmpScale: 1.0,
+                hatAmpScale: 0.85,
                 chordTail: .none,
                 bassTail: .none,
-                leadTail: .none
+                leadTail: ToneTail(ringOut: 0.06, fmDecay: 0.16)
             )
         case .piano:
             // Plucky FM on lead/chords; balanced band, slightly softer drums.

@@ -310,8 +310,13 @@ final class AudioGenCoreTests: XCTestCase {
 
     func testInstrumentPaletteFMAssignments() {
         let lead = InstrumentPalette.from(instrumentId: "lead_synth")
+        XCTAssertEqual(lead.leadShape, .square)
         XCTAssertGreaterThan(lead.leadFM.index, lead.chordFM.index)
+        XCTAssertLessThan(lead.leadFM.index, 1.1)
         XCTAssertGreaterThan(lead.leadAmpScale, lead.chordAmpScale)
+        XCTAssertGreaterThan(lead.muteBias, 0)
+        XCTAssertGreaterThan(lead.leadTail.fmDecay, 0.05)
+        XCTAssertGreaterThan(lead.leadTail.ringOut, 0.02)
 
         let pad = InstrumentPalette.from(instrumentId: "pad")
         XCTAssertGreaterThan(pad.chordAmpScale, pad.leadAmpScale)
