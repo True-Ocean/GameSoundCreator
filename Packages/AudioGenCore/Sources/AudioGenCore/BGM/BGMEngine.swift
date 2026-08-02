@@ -65,6 +65,11 @@ public struct BGMEngine: Sendable {
 
         // Blend scene density with rhythm so busy rhythm also feeds melody activity.
         let melodyDensity = min(1, max(0, density * 0.45 + rhythm * 0.55))
+        let sceneBias: MotifSceneBias
+        switch recipe.preset {
+        case .battleNormal: sceneBias = .battle
+        case .menuMain: sceneBias = .menu
+        }
         let melodyPlan = MelodyComposer.compose(
             bars: bars,
             progression: progression,
@@ -72,7 +77,8 @@ public struct BGMEngine: Sendable {
             moodId: recipe.params.moodId,
             melodyEnabled: recipe.params.melody,
             melodyChanceScale: instrument.melodyChanceScale,
-            seed: recipe.params.seed
+            seed: recipe.params.seed,
+            sceneBias: sceneBias
         )
         var melodyStarts: [Int: [MelodyNote]] = [:]
         for note in melodyPlan.notes {

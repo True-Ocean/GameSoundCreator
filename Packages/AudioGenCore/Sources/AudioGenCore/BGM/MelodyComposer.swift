@@ -51,11 +51,20 @@ public enum MelodyForm: String, Equatable, Sendable {
 
 /// Motif + rhythm-pattern + contour melody plan (Phase 3.5-M1 / pattern diversity).
 public struct MelodyPlan: Equatable, Sendable {
+    /// Primary motif-family index in the mood dictionary.
     public var rhythmId: Int
+    /// Contrast motif-family index (B / 転 side).
     public var contourId: Int
     public var motifBars: Int
     public var form: MelodyForm
     public var notes: [MelodyNote]
+}
+
+/// Scene lean for motif-dictionary ordering (Step 5).
+public enum MotifSceneBias: String, Equatable, Sendable {
+    case general
+    case battle
+    case menu
 }
 
 /// Pure melody composer — deterministic from seed, no audio I/O.
@@ -70,6 +79,16 @@ public enum MelodyComposer {
         var velocity: Float
     }
 
+    /// Paired rhythm + contour family (Step 5 dictionary entry).
+    private struct MotifTemplate: Equatable {
+        var rhythm: [RhythmHit]
+        var contour: ContourKind
+        var preferredStart: Int?
+        var motifBars: Int
+        /// 0 = sparse/calm … 2 = energetic (used for scene ordering).
+        var energy: Int
+    }
+
     public static func compose(
         bars: Int,
         progression: [Int],
@@ -77,7 +96,8 @@ public enum MelodyComposer {
         moodId: String,
         melodyEnabled: Bool,
         melodyChanceScale: Float,
-        seed: UInt64
+        seed: UInt64,
+        sceneBias: MotifSceneBias = .general
     ) -> MelodyPlan {
         let form = MelodyForm.forBarCount(bars)
         guard melodyEnabled, bars > 0, !progression.isEmpty else {
@@ -87,26 +107,35 @@ public enum MelodyComposer {
         var rng = SeededGenerator(seed: seed &+ 0x4D45_4C4F_4459) // "MELODY"
         let mood = Catalog.Mood(rawValue: moodId) ?? .neutral
 
-        let rhythmPool = rhythmPatterns(for: mood, density: density)
-        let contourPool = contourShapes(for: mood)
+        let dictionary = motifDictionary(for: mood, density: density, sceneBias: sceneBias)
         let startPool = startDegreePool(for: mood)
 
-        // Mix so nearby seeds (別パターン連打) still land in different families.
-        let rhythmId = Int(mix(seed, salt: 1) % UInt64(rhythmPool.count))
-        let contourId = Int(mix(seed, salt: 2) % UInt64(contourPool.count))
-        let startDegree = startPool[Int(mix(seed, salt: 3) % UInt64(startPool.count))]
+        // Seed picks a motif *family*; steps 2–3 rules render inside the family.
+        let familyA = Int(mix(seed, salt: 1) % UInt64(dictionary.count))
+        let familyB = (familyA + 1 + Int(mix(seed, salt: 5) % UInt64(max(1, dictionary.count - 1))))
+            % dictionary.count
+        let templateA = dictionary[familyA]
+        let templateB = dictionary[familyB]
+
         let motifBars: Int
-        if density > 0.65 {
+        if density > 0.72 {
             motifBars = 2
+        } else if density < 0.35 {
+            motifBars = max(templateA.motifBars, 2)
         } else {
-            motifBars = mix(seed, salt: 4) % 5 < 2 ? 4 : 2
+            motifBars = templateA.motifBars
         }
+
+        let startDegree = templateA.preferredStart
+            ?? startPool[Int(mix(seed, salt: 3) % UInt64(startPool.count))]
+        let startIdx = startPool.firstIndex(of: startDegree) ?? 0
+        let startDegreeB = templateB.preferredStart
+            ?? startPool[(startIdx + 2) % startPool.count]
         let keepChance = min(0.98, max(0.25, melodyChanceScale * (0.45 + 0.55 * density)))
 
-        let rhythmA = rhythmPool[rhythmId]
-        let contourA = contourShape(contourPool[contourId], length: max(4, rhythmA.count * motifBars), mood: mood)
+        let contourA = contourShape(templateA.contour, length: max(4, templateA.rhythm.count * motifBars), mood: mood)
         let motifA = buildMotif(
-            rhythm: rhythmA,
+            rhythm: templateA.rhythm,
             contour: contourA,
             startDegree: startDegree,
             motifBars: motifBars,
@@ -115,14 +144,9 @@ public enum MelodyComposer {
             rng: &rng
         )
 
-        let rhythmBId = (rhythmId + 1 + Int(mix(seed, salt: 5) % UInt64(max(1, rhythmPool.count - 1)))) % rhythmPool.count
-        let contourBId = (contourId + 1 + Int(mix(seed, salt: 6) % UInt64(max(1, contourPool.count - 1)))) % contourPool.count
-        let startIdx = startPool.firstIndex(of: startDegree) ?? 0
-        let startDegreeB = startPool[(startIdx + 2) % startPool.count]
-        let rhythmB = rhythmPool[rhythmBId]
-        let contourB = contourShape(contourPool[contourBId], length: max(4, rhythmB.count * motifBars), mood: mood)
+        let contourB = contourShape(templateB.contour, length: max(4, templateB.rhythm.count * motifBars), mood: mood)
         let motifB = buildMotif(
-            rhythm: rhythmB,
+            rhythm: templateB.rhythm,
             contour: contourB,
             startDegree: startDegreeB,
             motifBars: motifBars,
@@ -130,6 +154,9 @@ public enum MelodyComposer {
             mood: mood,
             rng: &rng
         )
+
+        let rhythmId = familyA
+        let contourId = familyB
 
         var notes: [MelodyNote] = []
         notes.reserveCapacity(bars * max(1, motifA.count / max(1, motifBars)))
@@ -440,97 +467,102 @@ public enum MelodyComposer {
         return stables.min(by: { abs($0 - relative) < abs($1 - relative) }) ?? 0
     }
 
-    // MARK: - Rhythm / contour libraries
+    // MARK: - Motif dictionary (Step 5)
 
-    private struct RhythmHit {
-        var step: Int
-        var duration: Int
+    private static func motifDictionary(
+        for mood: Catalog.Mood,
+        density: Float,
+        sceneBias: MotifSceneBias
+    ) -> [MotifTemplate] {
+        var templates = moodMotifTemplates(mood, density: density)
+        switch sceneBias {
+        case .battle:
+            templates.sort { $0.energy > $1.energy }
+        case .menu:
+            templates.sort { $0.energy < $1.energy }
+        case .general:
+            break
+        }
+        return templates
     }
 
-    private static func rhythmPatterns(for mood: Catalog.Mood, density: Float) -> [[RhythmHit]] {
-        let sparse: [[RhythmHit]] = [
-            [RhythmHit(step: 0, duration: 4), RhythmHit(step: 8, duration: 4)],
-            [RhythmHit(step: 0, duration: 2), RhythmHit(step: 4, duration: 2), RhythmHit(step: 8, duration: 4)],
-            [RhythmHit(step: 0, duration: 2), RhythmHit(step: 6, duration: 2), RhythmHit(step: 12, duration: 2)],
-            // Rest-lead / late entry
-            [RhythmHit(step: 4, duration: 4), RhythmHit(step: 12, duration: 4)],
-            [RhythmHit(step: 2, duration: 2), RhythmHit(step: 8, duration: 4), RhythmHit(step: 14, duration: 2)],
+    private static func moodMotifTemplates(_ mood: Catalog.Mood, density: Float) -> [MotifTemplate] {
+        // Shared rhythm skeletons
+        let even = [
+            RhythmHit(step: 0, duration: 2), RhythmHit(step: 4, duration: 2),
+            RhythmHit(step: 8, duration: 2), RhythmHit(step: 12, duration: 2),
         ]
-        let medium: [[RhythmHit]] = [
-            [
-                RhythmHit(step: 0, duration: 2), RhythmHit(step: 4, duration: 2),
-                RhythmHit(step: 8, duration: 2), RhythmHit(step: 12, duration: 2),
-            ],
-            [
-                RhythmHit(step: 0, duration: 2), RhythmHit(step: 3, duration: 1),
-                RhythmHit(step: 6, duration: 2), RhythmHit(step: 8, duration: 2),
-                RhythmHit(step: 12, duration: 2),
-            ],
-            [
-                RhythmHit(step: 0, duration: 2), RhythmHit(step: 2, duration: 2),
-                RhythmHit(step: 4, duration: 2), RhythmHit(step: 8, duration: 4),
-            ],
-            [
-                RhythmHit(step: 0, duration: 2), RhythmHit(step: 4, duration: 1),
-                RhythmHit(step: 6, duration: 2), RhythmHit(step: 10, duration: 2),
-                RhythmHit(step: 14, duration: 2),
-            ],
-            // Offbeat / syncopated openings
-            [
-                RhythmHit(step: 2, duration: 2), RhythmHit(step: 6, duration: 2),
-                RhythmHit(step: 8, duration: 2), RhythmHit(step: 12, duration: 2),
-            ],
-            [
-                RhythmHit(step: 0, duration: 1), RhythmHit(step: 5, duration: 2),
-                RhythmHit(step: 8, duration: 2), RhythmHit(step: 11, duration: 1),
-                RhythmHit(step: 14, duration: 2),
-            ],
-            [
-                RhythmHit(step: 6, duration: 2), RhythmHit(step: 8, duration: 2),
-                RhythmHit(step: 12, duration: 4),
-            ],
+        let syncopated = [
+            RhythmHit(step: 0, duration: 2), RhythmHit(step: 3, duration: 1),
+            RhythmHit(step: 6, duration: 2), RhythmHit(step: 8, duration: 2),
+            RhythmHit(step: 12, duration: 2),
         ]
-        let dense: [[RhythmHit]] = [
-            [
-                RhythmHit(step: 0, duration: 1), RhythmHit(step: 2, duration: 1),
-                RhythmHit(step: 4, duration: 2), RhythmHit(step: 8, duration: 1),
-                RhythmHit(step: 10, duration: 1), RhythmHit(step: 12, duration: 2),
-            ],
-            [
-                RhythmHit(step: 0, duration: 2), RhythmHit(step: 2, duration: 1),
-                RhythmHit(step: 4, duration: 1), RhythmHit(step: 6, duration: 2),
-                RhythmHit(step: 8, duration: 2), RhythmHit(step: 12, duration: 1),
-                RhythmHit(step: 14, duration: 1),
-            ],
-            [
-                RhythmHit(step: 0, duration: 1), RhythmHit(step: 3, duration: 1),
-                RhythmHit(step: 4, duration: 2), RhythmHit(step: 8, duration: 1),
-                RhythmHit(step: 11, duration: 1), RhythmHit(step: 12, duration: 2),
-            ],
-            [
-                RhythmHit(step: 2, duration: 1), RhythmHit(step: 4, duration: 1),
-                RhythmHit(step: 6, duration: 1), RhythmHit(step: 8, duration: 2),
-                RhythmHit(step: 12, duration: 1), RhythmHit(step: 14, duration: 1),
-            ],
-            [
-                RhythmHit(step: 0, duration: 1), RhythmHit(step: 2, duration: 1),
-                RhythmHit(step: 5, duration: 1), RhythmHit(step: 8, duration: 1),
-                RhythmHit(step: 10, duration: 2), RhythmHit(step: 13, duration: 1),
-            ],
+        let offbeat = [
+            RhythmHit(step: 2, duration: 2), RhythmHit(step: 6, duration: 2),
+            RhythmHit(step: 8, duration: 2), RhythmHit(step: 12, duration: 2),
+        ]
+        let sparse = [
+            RhythmHit(step: 0, duration: 4), RhythmHit(step: 8, duration: 4),
+        ]
+        let late = [
+            RhythmHit(step: 4, duration: 4), RhythmHit(step: 12, duration: 4),
+        ]
+        let busy = [
+            RhythmHit(step: 0, duration: 1), RhythmHit(step: 2, duration: 1),
+            RhythmHit(step: 4, duration: 2), RhythmHit(step: 8, duration: 1),
+            RhythmHit(step: 10, duration: 1), RhythmHit(step: 12, duration: 2),
+        ]
+        let callDrop = [
+            RhythmHit(step: 0, duration: 2), RhythmHit(step: 2, duration: 2),
+            RhythmHit(step: 4, duration: 2), RhythmHit(step: 8, duration: 4),
         ]
 
+        let preferDense = density > 0.55
         switch mood {
-        case .dark:
-            return sparse + medium
-        case .tense:
-            return density > 0.55 ? dense + medium : medium + dense
         case .bright:
-            return density > 0.5 ? medium + dense : medium + sparse
+            return [
+                MotifTemplate(rhythm: even, contour: .stepwiseClimb, preferredStart: 0, motifBars: 2, energy: 1),
+                MotifTemplate(rhythm: callDrop, contour: .riseFall, preferredStart: 0, motifBars: 2, energy: 1),
+                MotifTemplate(rhythm: syncopated, contour: .questionAnswer, preferredStart: 2, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: even, contour: .arch, preferredStart: 0, motifBars: preferDense ? 2 : 4, energy: 1),
+                MotifTemplate(rhythm: offbeat, contour: .neighborDip, preferredStart: 2, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: callDrop, contour: .leapResolve, preferredStart: 0, motifBars: 2, energy: 2),
+            ]
+        case .dark:
+            return [
+                MotifTemplate(rhythm: sparse, contour: .fallRise, preferredStart: 0, motifBars: 4, energy: 0),
+                MotifTemplate(rhythm: late, contour: .plunge, preferredStart: 2, motifBars: 2, energy: 0),
+                MotifTemplate(rhythm: even, contour: .arch, preferredStart: 0, motifBars: 4, energy: 1),
+                MotifTemplate(rhythm: sparse, contour: .highLanding, preferredStart: -3, motifBars: 2, energy: 0),
+                MotifTemplate(rhythm: callDrop, contour: .riseFall, preferredStart: 0, motifBars: 2, energy: 1),
+                MotifTemplate(rhythm: late, contour: .questionAnswer, preferredStart: 2, motifBars: 4, energy: 0),
+            ]
+        case .tense:
+            return [
+                MotifTemplate(rhythm: syncopated, contour: .zigzag, preferredStart: 0, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: busy, contour: .plunge, preferredStart: 5, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: offbeat, contour: .leapResolve, preferredStart: 0, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: syncopated, contour: .highLanding, preferredStart: 4, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: busy, contour: .questionAnswer, preferredStart: -1, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: even, contour: .riseFall, preferredStart: 0, motifBars: preferDense ? 2 : 4, energy: 1),
+            ]
         case .neutral:
-            if density < 0.35 { return sparse + medium }
-            if density > 0.7 { return dense + medium }
-            return medium + sparse + Array(dense.prefix(2))
+            return [
+                MotifTemplate(rhythm: even, contour: .riseFall, preferredStart: 0, motifBars: 2, energy: 1),
+                MotifTemplate(rhythm: callDrop, contour: .questionAnswer, preferredStart: 2, motifBars: 2, energy: 1),
+                MotifTemplate(rhythm: syncopated, contour: .arch, preferredStart: 4, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: sparse, contour: .neighborDip, preferredStart: 0, motifBars: 4, energy: 0),
+                MotifTemplate(rhythm: even, contour: .stepwiseClimb, preferredStart: 2, motifBars: preferDense ? 2 : 4, energy: 1),
+                MotifTemplate(rhythm: offbeat, contour: .fallRise, preferredStart: 4, motifBars: 2, energy: 1),
+            ]
         }
+    }
+
+    // MARK: - Rhythm / contour libraries
+
+    private struct RhythmHit: Equatable {
+        var step: Int
+        var duration: Int
     }
 
     private enum ContourKind: CaseIterable {
@@ -544,23 +576,6 @@ public enum MelodyComposer {
         case plunge
         case leapResolve
         case neighborDip
-    }
-
-    /// Step 2: mood-biased contour families (usable pitch shapes).
-    private static func contourShapes(for mood: Catalog.Mood) -> [ContourKind] {
-        switch mood {
-        case .bright:
-            // Stable / upward / resolve-home. No plunge.
-            return [.stepwiseClimb, .riseFall, .questionAnswer, .arch, .neighborDip, .leapResolve]
-        case .dark:
-            // Downward / narrow / low landings. Avoid bright stepwise climb.
-            return [.fallRise, .plunge, .arch, .highLanding, .riseFall, .questionAnswer]
-        case .tense:
-            // Angular / unresolved. Prefer leaps and zigzags.
-            return [.zigzag, .plunge, .leapResolve, .highLanding, .questionAnswer, .riseFall]
-        case .neutral:
-            return [.riseFall, .questionAnswer, .arch, .neighborDip, .stepwiseClimb, .fallRise, .leapResolve]
-        }
     }
 
     private static func contourShape(_ kind: ContourKind, length: Int, mood: Catalog.Mood) -> [Int] {

@@ -601,7 +601,44 @@ final class AudioGenCoreTests: XCTestCase {
             )
         }
         let signatures = Set(plans.map { "\($0.rhythmId)-\($0.contourId)-\($0.motifBars)" })
-        XCTAssertGreaterThan(signatures.count, 6, "seeds should explore multiple rhythm/contour families")
+        XCTAssertGreaterThan(signatures.count, 6, "seeds should explore multiple motif families")
+    }
+
+    func testMotifDictionaryFamiliesDifferByMood() {
+        let progression = [0, 5, 3, 4]
+        let seed: UInt64 = 17
+        let bright = MelodyComposer.compose(
+            bars: 8, progression: progression, density: 0.55, moodId: "bright",
+            melodyEnabled: true, melodyChanceScale: 1, seed: seed, sceneBias: .general
+        )
+        let dark = MelodyComposer.compose(
+            bars: 8, progression: progression, density: 0.55, moodId: "dark",
+            melodyEnabled: true, melodyChanceScale: 1, seed: seed, sceneBias: .general
+        )
+        XCTAssertNotEqual(bright.notes, dark.notes)
+        // Family indices stay in dictionary range (6 templates).
+        XCTAssertLessThan(bright.rhythmId, 6)
+        XCTAssertLessThan(dark.rhythmId, 6)
+    }
+
+    func testSceneBiasCanChangeMotifFamilyOrdering() {
+        let progression = [0, 4, 5, 3]
+        var differed = false
+        for seed in 1...24 {
+            let battle = MelodyComposer.compose(
+                bars: 8, progression: progression, density: 0.55, moodId: "neutral",
+                melodyEnabled: true, melodyChanceScale: 1, seed: UInt64(seed), sceneBias: .battle
+            )
+            let menu = MelodyComposer.compose(
+                bars: 8, progression: progression, density: 0.55, moodId: "neutral",
+                melodyEnabled: true, melodyChanceScale: 1, seed: UInt64(seed), sceneBias: .menu
+            )
+            if battle.rhythmId != menu.rhythmId || battle.notes != menu.notes {
+                differed = true
+                break
+            }
+        }
+        XCTAssertTrue(differed, "battle vs menu scene bias should reorder motif families")
     }
 
     func testDifferentSeedsVaryOpeningPhrase() {
