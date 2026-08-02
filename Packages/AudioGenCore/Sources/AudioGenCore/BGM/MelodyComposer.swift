@@ -177,10 +177,13 @@ public enum MelodyComposer {
     }
 
     /// Arrangement hints for drums / octave (consumed by `BGMEngine`).
+    /// Step 4: 転 contrasts by drums / sparsity / fills — not lead octave.
     public static func arrangementScale(
         form: MelodyForm,
-        section: Int
+        section: Int,
+        moodId: String = Catalog.Mood.neutral.rawValue
     ) -> (drum: Float, leadOctaveBias: Int, forceFill: Bool, chordSparse: Bool) {
+        let mood = Catalog.Mood(rawValue: moodId) ?? .neutral
         switch form {
         case .loop:
             return (1.0, 0, false, false)
@@ -192,8 +195,17 @@ public enum MelodyComposer {
             switch section {
             case 0: return (0.95, 0, false, false) // 起
             case 1: return (1.05, 0, false, false) // 承
-            // 転: contrast via drums/fill, not an octave jump (Step 1).
-            case 2: return (1.28, 0, true, false)
+            case 2: // 転 — mood-colored arrangement contrast
+                switch mood {
+                case .bright:
+                    return (1.38, 0, true, false) // busier drums + fills
+                case .dark:
+                    return (0.78, 0, false, true) // space / sparse chords
+                case .tense:
+                    return (1.42, 0, true, false) // aggressive drums
+                case .neutral:
+                    return (1.28, 0, true, false)
+                }
             default: return (0.72, 0, false, true) // 結
             }
         }
@@ -236,11 +248,66 @@ public enum MelodyComposer {
                 return (motifA.filter { $0.barOffset == barOffset }, 0, 1, 0)
             case 1: // 承 — develop A
                 return (motifA.filter { $0.barOffset == barOffset }, 2, 1.04, 0)
-            case 2: // 転 — mild lift only (was +4)
-                return (motifB.filter { $0.barOffset == barOffset }, 2, 1.12, 0)
+            case 2: // 転 — rhythm / density / dynamics (Step 4)
+                return tenSectionRendering(
+                    events: motifB.filter { $0.barOffset == barOffset },
+                    mood: mood
+                )
             default: // 結 — thinned A return
                 return (motifA.filter { $0.barOffset == barOffset }, 0, 0.88, 0.35)
             }
+        }
+    }
+
+    /// 転: keep register mild; contrast via articulation, rests, and energy.
+    private static func tenSectionRendering(
+        events: [MotifEvent],
+        mood: Catalog.Mood
+    ) -> (events: [MotifEvent], degreeBias: Int, velocityScale: Float, thinChance: Float) {
+        switch mood {
+        case .bright:
+            // Same-ish register, punchier offbeats, shorter notes.
+            let shaped = events.map { event -> MotifEvent in
+                var copy = event
+                if event.step % 4 != 0 {
+                    copy.velocity = min(1, event.velocity * 1.18)
+                }
+                copy.duration = max(1, event.duration - (event.step % 4 == 0 ? 0 : 1))
+                return copy
+            }
+            return (shaped, 1, 1.16, 0)
+
+        case .dark:
+            // Thin and soften — contrast by space, not height.
+            let shaped = events.map { event -> MotifEvent in
+                var copy = event
+                copy.velocity *= 0.9
+                copy.duration = max(1, event.duration)
+                return copy
+            }
+            return (shaped, 0, 0.8, 0.45)
+
+        case .tense:
+            // Drop some downbeats for a syncopated push; keep mild lift.
+            let shaped = events.compactMap { event -> MotifEvent? in
+                // Keep phrase anchor; thin other strong beats.
+                if event.step != 0, event.step % 4 == 0 { return nil }
+                var copy = event
+                copy.duration = max(1, min(event.duration, 2))
+                copy.velocity = min(1, event.velocity * 1.12)
+                return copy
+            }
+            return (shaped, 1, 1.2, 0.18)
+
+        case .neutral:
+            let shaped = events.map { event -> MotifEvent in
+                var copy = event
+                if event.step % 4 != 0 {
+                    copy.duration = max(1, event.duration - 1)
+                }
+                return copy
+            }
+            return (shaped, 1, 1.12, 0.14)
         }
     }
 

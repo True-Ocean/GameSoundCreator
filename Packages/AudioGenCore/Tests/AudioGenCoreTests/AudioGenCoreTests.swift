@@ -780,9 +780,15 @@ final class AudioGenCoreTests: XCTestCase {
     }
 
     func testTenSectionDoesNotRaiseLeadOctave() {
-        let ten = MelodyComposer.arrangementScale(form: .kiShoTenKetsu, section: 2)
-        XCTAssertEqual(ten.leadOctaveBias, 0, "転 should contrast without +1 octave")
-        XCTAssertTrue(ten.forceFill)
+        for mood in ["bright", "dark", "tense", "neutral"] {
+            let ten = MelodyComposer.arrangementScale(form: .kiShoTenKetsu, section: 2, moodId: mood)
+            XCTAssertEqual(ten.leadOctaveBias, 0, "転 should contrast without +1 octave (\(mood))")
+        }
+        let brightTen = MelodyComposer.arrangementScale(form: .kiShoTenKetsu, section: 2, moodId: "bright")
+        XCTAssertTrue(brightTen.forceFill)
+        let darkTen = MelodyComposer.arrangementScale(form: .kiShoTenKetsu, section: 2, moodId: "dark")
+        XCTAssertTrue(darkTen.chordSparse, "dark 転 should sparsify chords")
+        XCTAssertLessThan(darkTen.drum, brightTen.drum)
         let ki = MelodyComposer.arrangementScale(form: .kiShoTenKetsu, section: 0)
         XCTAssertEqual(ki.leadOctaveBias, 0)
     }
@@ -805,10 +811,42 @@ final class AudioGenCoreTests: XCTestCase {
         }
         XCTAssertFalse(kiRels.isEmpty)
         XCTAssertFalse(tenRels.isEmpty)
-        // Mild +2 bias (not +4): average lift should stay modest vs 起.
+        // Mild lift only: average should stay modest vs 起.
         let kiAvg = Double(kiRels.reduce(0, +)) / Double(kiRels.count)
         let tenAvg = Double(tenRels.reduce(0, +)) / Double(tenRels.count)
         XCTAssertLessThan(tenAvg - kiAvg, 5.0, "転 should not soar far above 起")
+    }
+
+    func testTenSectionContrastsByDensityNotHeight() {
+        let progression = [0, 5, 2, 6]
+        let seed: UInt64 = 33
+        let bright = MelodyComposer.compose(
+            bars: 16, progression: progression, density: 0.6, moodId: "bright",
+            melodyEnabled: true, melodyChanceScale: 1, seed: seed
+        )
+        let dark = MelodyComposer.compose(
+            bars: 16, progression: progression, density: 0.6, moodId: "dark",
+            melodyEnabled: true, melodyChanceScale: 1, seed: seed
+        )
+        let brightTen = bright.notes.filter { $0.bar >= 8 && $0.bar < 12 }
+        let darkTen = dark.notes.filter { $0.bar >= 8 && $0.bar < 12 }
+        let brightKi = bright.notes.filter { $0.bar < 4 }
+        XCTAssertFalse(brightTen.isEmpty)
+        XCTAssertFalse(darkTen.isEmpty)
+        // Dark 転 thins more than bright 転.
+        XCTAssertLessThan(darkTen.count, brightTen.count + 2)
+
+        func avgRel(_ notes: [MelodyNote]) -> Double {
+            let rels = notes.map { $0.degree - progression[$0.bar % progression.count] }
+            return Double(rels.reduce(0, +)) / Double(max(1, rels.count))
+        }
+        // Bright 転 should not jump far above 起 in register.
+        XCTAssertLessThan(avgRel(brightTen) - avgRel(brightKi), 4.0)
+
+        // Bright 転 tends to be shorter/punchier articulations than 起.
+        let kiDur = Double(brightKi.map(\.durationSteps).reduce(0, +)) / Double(max(1, brightKi.count))
+        let tenDur = Double(brightTen.map(\.durationSteps).reduce(0, +)) / Double(max(1, brightTen.count))
+        XCTAssertLessThanOrEqual(tenDur, kiDur + 0.35)
     }
 
     func testProgressionPickCanStartOffTonic() {

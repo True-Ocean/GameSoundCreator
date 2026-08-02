@@ -84,7 +84,11 @@ public struct BGMEngine: Sendable {
         var chordIndex = 0
         for bar in 0..<bars {
             let section = form.sectionIndex(bar: bar, totalBars: bars)
-            let arrange = MelodyComposer.arrangementScale(form: form, section: section)
+            let arrange = MelodyComposer.arrangementScale(
+                form: form,
+                section: section,
+                moodId: recipe.params.moodId
+            )
             let chordDegree = progression[chordIndex % progression.count]
             chordIndex += 1
             let sectionLeadOctave = max(3, min(7, leadOctave + arrange.leadOctaveBias))
