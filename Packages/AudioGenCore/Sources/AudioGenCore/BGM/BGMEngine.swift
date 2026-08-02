@@ -466,9 +466,11 @@ public struct BGMEngine: Sendable {
         var carrierPhase = 0.0
         var modulatorPhase = 0.0
         let useRing = ringOut > 0.0001
-        let release = min(envelope.release, max(0.02, (useRing ? totalDuration : duration) * 0.4))
+        // High sustain + ringOut = held body then soft tail (bass). Low sustain = pluck ring (music box).
+        let sustainRing = useRing && envelope.sustain >= 0.35
+        let release = min(envelope.release, max(0.02, duration * 0.4))
         let env = ADSR(
-            attack: min(envelope.attack, (useRing ? totalDuration : duration) * 0.45),
+            attack: min(envelope.attack, duration * 0.45),
             decay: envelope.decay,
             sustain: envelope.sustain,
             release: release
@@ -482,7 +484,28 @@ public struct BGMEngine: Sendable {
             carrierPhase += freq / sampleRate
 
             let e: Float
-            if useRing {
+            if sustainRing {
+                let atk = min(envelope.attack, max(0.0005, duration * 0.2))
+                if t < atk {
+                    e = atk > 0 ? Float(t / atk) : 1
+                } else if t < duration {
+                    let decayEnd = atk + max(0.001, envelope.decay)
+                    if t < decayEnd {
+                        let u = (t - atk) / max(0.001, envelope.decay)
+                        e = 1 - (1 - envelope.sustain) * Float(u)
+                    } else {
+                        e = envelope.sustain
+                    }
+                } else {
+                    let tau = max(0.08, envelope.release)
+                    var level = envelope.sustain * Float(exp(-(t - duration) / tau))
+                    let fadeStart = totalDuration * 0.9
+                    if t > fadeStart, totalDuration > fadeStart {
+                        level *= Float(max(0, 1 - (t - fadeStart) / (totalDuration - fadeStart)))
+                    }
+                    e = level
+                }
+            } else if useRing {
                 // Short strike, then exponential ring (decay = tau). Clear overlapping tones.
                 let atk = min(envelope.attack, max(0.0005, totalDuration * 0.08))
                 if t < atk {

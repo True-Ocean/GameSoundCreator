@@ -590,79 +590,77 @@ struct StudioView: View {
     }
 
     private var bgmStudioBody: some View {
-        VStack(spacing: 12) {
-            studioMenuRow(title: "シーン") {
-                Picker("シーン", selection: bgmSceneGroupBinding) {
-                    ForEach(Catalog.bgmSceneGroupOrder, id: \.self) { group in
-                        Text(group).tag(group)
+        VStack(spacing: 16) {
+            // Stops playback when changed.
+            VStack(spacing: 10) {
+                studioMenuRow(title: "シーン") {
+                    Picker("シーン", selection: bgmSceneGroupBinding) {
+                        ForEach(Catalog.bgmSceneGroupOrder, id: \.self) { group in
+                            Text(group).tag(group)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .tint(theme.accent)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(theme.accent)
-            }
 
-            studioMenuRow(title: "詳細") {
-                Picker("詳細", selection: bgmSceneIdBinding) {
-                    ForEach(Catalog.bgmScenes(in: sceneGroup), id: \.rawValue) { scene in
-                        Text(scene.displayName).tag(scene.rawValue)
+                studioMenuRow(title: "詳細") {
+                    Picker("詳細", selection: bgmSceneIdBinding) {
+                        ForEach(Catalog.bgmScenes(in: sceneGroup), id: \.rawValue) { scene in
+                            Text(scene.displayName).tag(scene.rawValue)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .tint(theme.accent)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(theme.accent)
-            }
 
-            studioMenuRow(title: "音色") {
-                Picker("音色", selection: bgmInstrumentIdBinding) {
-                    ForEach(Catalog.instruments) { item in
+                studioMenuRow(title: "音色") {
+                    Picker("音色", selection: bgmInstrumentIdBinding) {
+                        ForEach(Catalog.instruments) { item in
+                            Text(item.displayName).tag(item.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .tint(theme.accent)
+                }
+
+                Picker("長さ", selection: bgmLengthIdBinding) {
+                    ForEach(Catalog.bgmLengths) { item in
                         Text(item.displayName).tag(item.id)
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(theme.accent)
+                .pickerStyle(.segmented)
+                .accessibilityLabel("長さ")
             }
 
-            Picker("雰囲気", selection: bgmMoodIdBinding) {
-                ForEach(Catalog.moods) { item in
-                    Text(item.displayName).tag(item.id)
+            studioSectionDivider
+
+            // Keeps playing; regenerates in the background.
+            VStack(spacing: 10) {
+                Picker("雰囲気", selection: bgmMoodIdBinding) {
+                    ForEach(Catalog.moods) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("雰囲気")
+                .pickerStyle(.segmented)
+                .accessibilityLabel("雰囲気")
 
-            Picker("長さ", selection: bgmLengthIdBinding) {
-                ForEach(Catalog.bgmLengths) { item in
-                    Text(item.displayName).tag(item.id)
+                VStack(spacing: 10) {
+                    compactSlider("テンポ", value: $bgmTempo, range: 80...160, step: 1)
+                    compactSlider("ピッチ", value: $bgmPitch, range: -6...6, step: 1)
+                    compactSlider("リズム", value: $bgmRhythm, range: 0...1)
                 }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("長さ")
 
-            VStack(spacing: 12) {
-                compactSlider("テンポ", value: $bgmTempo, range: 80...160, step: 1)
-                compactSlider("ピッチ", value: $bgmPitch, range: -6...6, step: 1)
-                compactSlider("リズム", value: $bgmRhythm, range: 0...1)
+                studioToggleRow(title: "メロディ", isOn: $bgmMelody)
             }
 
             Spacer(minLength: 0)
 
-            HStack {
-                HStack(spacing: 8) {
-                    Text("ループ")
-                        .font(.subheadline)
-                    Toggle("ループ", isOn: bgmLoopBinding)
-                        .labelsHidden()
-                }
-                Spacer(minLength: 24)
-                HStack(spacing: 8) {
-                    Text("メロディ")
-                        .font(.subheadline)
-                    Toggle("メロディ", isOn: $bgmMelody)
-                        .labelsHidden()
-                }
-            }
+            studioSectionDivider
+
+            studioToggleRow(title: "ループ", isOn: bgmLoopBinding)
 
             StudioPlaybackProgress(monitor: monitor)
 
@@ -698,10 +696,32 @@ struct StudioView: View {
         .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    private var studioSectionDivider: some View {
+        Rectangle()
+            .fill(theme.secondaryText.opacity(0.45))
+            .frame(height: 1)
+            .padding(.horizontal, 2)
+    }
+
+    private func studioToggleRow(title: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.subheadline)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: 56, alignment: .leading)
+            Spacer(minLength: 0)
+            Toggle(title, isOn: isOn)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+    }
+
     // MARK: Catalog bindings
-    // BGM: シーン／詳細／音色／長さ → 停止して再生待ち
-    //      雰囲気・微調整 → 再生中は旧音継続のまま再生成し切替
-    //      ループ → 即反映
+    // BGM UI order mirrors behavior:
+    //   シーン／詳細／音色／長さ → 停止して再生待ち
+    //   雰囲気・テンポ／ピッチ／リズム・メロディ → 再生中は旧音継続のまま再生成し切替
+    //   ループ → 再生位置を保ったまま即反映
 
     private var bgmSceneGroupBinding: Binding<String> {
         Binding(
@@ -911,13 +931,8 @@ struct StudioView: View {
 
     private func applyBGMLoopImmediate() {
         guard soundType == .bgm, monitor.isPlaying, mapped != nil else { return }
-        do {
-            try service.playLast(loop: loopEnabled)
-            monitor.start(duration: mapped?.durationSeconds ?? 1, looping: loopEnabled)
-        } catch {
-            errorText = error.localizedDescription
-            showError = true
-        }
+        service.setLooping(loopEnabled)
+        monitor.setLooping(loopEnabled)
     }
 
     private func applyCurrentBGMParamsToMapped() {

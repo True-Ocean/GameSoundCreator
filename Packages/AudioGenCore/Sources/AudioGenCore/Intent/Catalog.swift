@@ -333,7 +333,7 @@ public enum Catalog {
             case .leadSynth: return "キビキビしたメロディ向き。戦闘に合う"
             case .piano: return "アタックのはっきりした鍵盤風。メニュー向き"
             case .pad: return "ゆっくり広がる厚み。雰囲気・敗北寄り"
-            case .bass: return "低音を前面に。土台を強調"
+            case .bass: return "低音を前面に。探索・ダンジョン向き"
             case .musicBox: return "高いキラキラのプラック。ショップ・ガチャ向き"
             case .organ: return "持続する荘厳な響き。ストーリー向き"
             case .guitar: return "明るめのプラック。冒険・カジュアル向き"
@@ -361,8 +361,10 @@ public enum Catalog {
                 return .pad
             case .story:
                 return .organ
-            case .adventure, .explore:
+            case .adventure:
                 return .guitar
+            case .explore:
+                return .bass
             }
         }
     }

@@ -219,6 +219,22 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(recipe.params.instrumentId, Catalog.Instrument.piano.rawValue)
     }
 
+    func testDefaultInstrumentForExploreIsBass() throws {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "explore",
+            moodId: "neutral",
+            lengthId: "bars_8",
+            seed: 11
+        )
+        let mapped = try IntentMapper().map(intent)
+        guard case .bgm(let recipe) = mapped else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(recipe.params.instrumentId, Catalog.Instrument.bass.rawValue)
+        XCTAssertEqual(Catalog.Instrument.defaultFor(scene: .adventure), .guitar)
+    }
+
     func testIntentMapperHonorsExplicitInstrument() throws {
         let intent = SoundIntent(
             soundType: .bgm,
@@ -331,22 +347,28 @@ final class AudioGenCoreTests: XCTestCase {
         let bass = InstrumentPalette.from(instrumentId: "bass")
         XCTAssertGreaterThan(bass.bassAmpScale, bass.chordAmpScale)
         XCTAssertTrue(bass.bassRootHeavy)
-        XCTAssertGreaterThan(bass.bassFM.index, 0.5)
+        XCTAssertGreaterThan(bass.bassFM.index, 0.45)
+        XCTAssertLessThan(bass.bassFM.index, 0.8)
+        XCTAssertGreaterThan(bass.filterCutoffScale, 0.7)
+        XCTAssertEqual(bass.chordOctaveBias, 0)
+        XCTAssertGreaterThan(bass.bassEnv.sustain, 0.6)
+        XCTAssertGreaterThan(bass.bassDurationScale, 1.3)
+        XCTAssertGreaterThan(bass.bassTail.ringOut, 0.15)
+        XCTAssertGreaterThan(bass.bassTail.fmDecay, 0.05)
 
         let musicBox = InstrumentPalette.from(instrumentId: "music_box")
         XCTAssertGreaterThan(musicBox.leadOctaveBias, 0)
-        // Integer-ratio FM for metallic tine sheen without inharmonic pitch blur.
+        // Softer integer-ratio FM: brief tine flash without piercing highs.
         XCTAssertEqual(musicBox.leadFM.ratio.truncatingRemainder(dividingBy: 1), 0, accuracy: 0.001)
-        XCTAssertGreaterThanOrEqual(musicBox.leadFM.ratio, 3.0)
-        XCTAssertGreaterThan(musicBox.leadFM.index, 0.6)
-        XCTAssertLessThan(musicBox.leadFM.index, 1.1)
-        XCTAssertEqual(musicBox.chordFM.ratio.truncatingRemainder(dividingBy: 1), 0, accuracy: 0.001)
-        XCTAssertLessThan(musicBox.muteBias, 0.2)
+        XCTAssertGreaterThanOrEqual(musicBox.leadFM.ratio, 2.0)
+        XCTAssertGreaterThan(musicBox.leadFM.index, 0.35)
+        XCTAssertLessThan(musicBox.leadFM.index, 0.7)
+        XCTAssertLessThan(musicBox.filterCutoffScale, 1.1)
+        XCTAssertGreaterThan(musicBox.muteBias, 0.12)
         XCTAssertLessThan(musicBox.drumAmpScale, 0.5)
         XCTAssertLessThan(musicBox.leadDurationScale, 1.1)
-        // Ring-out + FM decay: short gate, long clear tine tail.
         XCTAssertGreaterThan(musicBox.leadTail.ringOut, 1.0)
-        XCTAssertGreaterThan(musicBox.leadTail.fmDecay, 0.05)
+        XCTAssertLessThan(musicBox.leadTail.fmDecay, 0.12)
         XCTAssertGreaterThan(musicBox.chordTail.ringOut, 0.4)
         let piano = InstrumentPalette.from(instrumentId: "piano")
         XCTAssertTrue(piano.pianoVoice)

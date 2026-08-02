@@ -153,12 +153,13 @@ public struct IntentMapper: Sendable {
             return recipe
 
         case .explore:
+            // Dungeon-leaning pulse; pairs with bass instrument default.
             var recipe = BGMPreset.menuMain.makeRecipe(seed: seed)
-            recipe.params.tempoBpm = 102
-            recipe.params.energy = 0.42
-            recipe.params.density = 0.45
-            recipe.params.brightness = 0.55
-            recipe.params.key = MusicalKey(root: 2, mode: .major) // D major
+            recipe.params.tempoBpm = 96
+            recipe.params.energy = 0.38
+            recipe.params.density = 0.4
+            recipe.params.brightness = 0.35
+            recipe.params.key = MusicalKey(root: 4, mode: .minor) // E minor
             return recipe
 
         case .battleNormal, .battleBoss, .battlePinch, .battleEasy, .battleHard, .battleExtra:
@@ -232,9 +233,9 @@ public struct IntentMapper: Sendable {
             if [.menuMain, .title, .opening, .resultWin, .resultHappyEnd, .shop, .gachaOrReward].contains(scene) {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .major)
                 recipe.params.brightness = max(recipe.params.brightness, 0.55)
-            } else if isBattle || scene == .resultLose || scene == .resultBadEnd {
+            } else if isBattle || scene == .resultLose || scene == .resultBadEnd || scene == .explore {
                 recipe.params.key = MusicalKey(root: recipe.params.key.root, mode: .minor)
-                recipe.params.brightness = min(recipe.params.brightness, 0.45)
+                recipe.params.brightness = min(recipe.params.brightness, scene == .explore ? 0.38 : 0.45)
             } else {
                 recipe.params.brightness = 0.5
             }

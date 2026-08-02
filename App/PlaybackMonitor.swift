@@ -46,6 +46,24 @@ final class PlaybackMonitor {
         }
     }
 
+    /// Change loop mode without resetting the transport position.
+    func setLooping(_ looping: Bool) {
+        guard isLooping != looping else { return }
+        let position: TimeInterval
+        if duration > 0 {
+            position = isLooping
+                ? currentTime.truncatingRemainder(dividingBy: duration)
+                : min(currentTime, duration)
+        } else {
+            position = currentTime
+        }
+        isLooping = looping
+        currentTime = position
+        if isPlaying {
+            startedAt = Date().addingTimeInterval(-position)
+        }
+    }
+
     func stopMonitoring(reset: Bool = true) {
         timer?.invalidate()
         timer = nil

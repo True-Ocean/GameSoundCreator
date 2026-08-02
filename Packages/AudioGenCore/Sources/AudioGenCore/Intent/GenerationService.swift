@@ -63,6 +63,11 @@ public final class GenerationService {
         try player.play(buffer, loop: loop)
     }
 
+    /// Toggle loop without stopping or restarting the current buffer.
+    public func setLooping(_ loop: Bool) {
+        player.setLooping(loop)
+    }
+
     public func stop() {
         player.stop()
     }

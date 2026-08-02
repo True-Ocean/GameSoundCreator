@@ -16,18 +16,49 @@ public enum AudioPlayerError: Error, LocalizedError, Sendable {
 }
 
 /// One-shot or looping playback via AVAudioEngine + player node.
+///
+/// Looping is done by chaining buffer schedules (not `.loops`), so `setLooping`
+/// can flip mid-playback without stopping or seeking the audio.
 @MainActor
 public final class BufferAudioPlayer {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private var connectedFormat: AVAudioFormat?
     private var isAttached = false
+    private var currentBuffer: AVAudioPCMBuffer?
+    private var isLooping = false
+    /// Invalidates in-flight completion handlers after `stop()` / new `play()`.
+    private var playGeneration = 0
 
     public init() {}
 
     public func play(_ buffer: AVAudioPCMBuffer, loop: Bool = false) throws {
         guard buffer.frameLength > 0 else { throw AudioPlayerError.emptyBuffer }
+        playGeneration += 1
+        let generation = playGeneration
+        currentBuffer = buffer
+        isLooping = loop
+        try prepareEngine(for: buffer)
+        scheduleSegment(generation: generation)
+        player.play()
+    }
 
+    /// Change looping without stopping or restarting playback.
+    public func setLooping(_ loop: Bool) {
+        isLooping = loop
+    }
+
+    public func stop() {
+        playGeneration += 1
+        player.stop()
+        currentBuffer = nil
+        isLooping = false
+        if engine.isRunning {
+            engine.stop()
+        }
+    }
+
+    private func prepareEngine(for buffer: AVAudioPCMBuffer) throws {
         if !isAttached {
             engine.attach(player)
             isAttached = true
@@ -50,16 +81,23 @@ public final class BufferAudioPlayer {
                 throw AudioPlayerError.engineStartFailed(error.localizedDescription)
             }
         }
-
-        let options: AVAudioPlayerNodeBufferOptions = loop ? [.loops] : []
-        player.scheduleBuffer(buffer, at: nil, options: options, completionHandler: nil)
-        player.play()
     }
 
-    public func stop() {
-        player.stop()
-        if engine.isRunning {
-            engine.stop()
+    private func scheduleSegment(generation: Int) {
+        guard generation == playGeneration, let buffer = currentBuffer else { return }
+        player.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
+            Task { @MainActor in
+                self?.handleSegmentEnd(generation: generation)
+            }
+        }
+    }
+
+    private func handleSegmentEnd(generation: Int) {
+        guard generation == playGeneration else { return }
+        guard isLooping, currentBuffer != nil else { return }
+        scheduleSegment(generation: generation)
+        if !player.isPlaying {
+            player.play()
         }
     }
 }
