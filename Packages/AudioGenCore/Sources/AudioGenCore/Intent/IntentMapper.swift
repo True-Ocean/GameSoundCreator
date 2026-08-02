@@ -207,9 +207,10 @@ public struct IntentMapper: Sendable {
         case .resultLose, .resultBadEnd:
             var recipe = BGMPreset.battleNormal.makeRecipe(seed: seed)
             recipe.params.tempoBpm = scene == .resultBadEnd ? 78 : 88
-            recipe.params.density = scene == .resultBadEnd ? 0.22 : 0.3
-            recipe.params.energy = scene == .resultBadEnd ? 0.28 : 0.35
-            recipe.params.brightness = scene == .resultBadEnd ? 0.08 : 0.15
+            recipe.params.density = scene == .resultBadEnd ? 0.28 : 0.38
+            recipe.params.energy = scene == .resultBadEnd ? 0.3 : 0.38
+            // Keep somber, but not so dark that phone speakers bury the bed.
+            recipe.params.brightness = scene == .resultBadEnd ? 0.22 : 0.3
             return recipe
         }
     }
@@ -248,8 +249,9 @@ public struct IntentMapper: Sendable {
             recipe.params.key = MusicalKey(root: 4, mode: .minor) // E minor, darker center
             recipe.params.tempoBpm = max(80, recipe.params.tempoBpm - 14)
             recipe.params.energy = max(0.25, recipe.params.energy - 0.15)
-            recipe.params.density = max(0.15, recipe.params.density - 0.15)
-            recipe.params.brightness = 0.12
+            recipe.params.density = max(0.2, recipe.params.density - 0.1)
+            // Dim, not buried — phone speakers need midrange energy.
+            recipe.params.brightness = max(0.22, min(0.35, recipe.params.brightness))
             recipe.params.melody = true
         }
     }

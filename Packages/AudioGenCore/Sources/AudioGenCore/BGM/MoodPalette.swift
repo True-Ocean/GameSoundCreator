@@ -65,23 +65,24 @@ struct MoodPalette: Sendable {
                 reverbDecay: 0.28
             )
         case .dark:
+            // Somber but still audible on phone speakers (avoid sub-bass mud).
             return MoodPalette(
                 chordShape: .sine,
                 bassShape: .sine,
                 leadShape: .triangle,
-                chordOctave: 3,
-                leadOctave: 4,
-                drumKick: 0.35 + 0.25 * energy,
+                chordOctave: 4,
+                leadOctave: 5,
+                drumKick: 0.3 + 0.2 * energy,
                 drumSnare: 0.12 + 0.15 * energy,
-                drumHat: 0.04 + 0.06 * energy,
-                chordAmp: 0.16,
-                bassAmp: 0.24,
-                leadAmp: 0.08 + 0.08 * density,
-                mute: 0.55 + 0.25 * (1 - brightness),
-                melodyChance: 0.15 + 0.25 * density,
-                filterCutoffHz: 1_600 + 900 * Double(brightness),
-                reverbMix: 0.24 + 0.1 * (1 - brightness),
-                reverbDecay: 0.55
+                drumHat: 0.05 + 0.08 * energy,
+                chordAmp: 0.15,
+                bassAmp: 0.18,
+                leadAmp: 0.12 + 0.1 * density,
+                mute: 0.35 + 0.2 * (1 - brightness),
+                melodyChance: 0.22 + 0.28 * density,
+                filterCutoffHz: 2_400 + 1_100 * Double(brightness),
+                reverbMix: 0.22 + 0.08 * (1 - brightness),
+                reverbDecay: 0.5
             )
         case .neutral:
             return MoodPalette(

@@ -320,7 +320,13 @@ final class AudioGenCoreTests: XCTestCase {
 
         let pad = InstrumentPalette.from(instrumentId: "pad")
         XCTAssertGreaterThan(pad.chordAmpScale, pad.leadAmpScale)
-        XCTAssertLessThan(pad.drumAmpScale, 1.0)
+        XCTAssertTrue(pad.sustainChords)
+        XCTAssertLessThan(pad.drumAmpScale, 0.55)
+        XCTAssertLessThan(pad.chordFM.index, 0.55)
+        XCTAssertGreaterThan(pad.chordTail.fmDecay, 0.3)
+        XCTAssertEqual(pad.leadOctaveBias, 0)
+        XCTAssertGreaterThan(pad.leadAmpScale, 0.7)
+        XCTAssertGreaterThan(pad.filterCutoffScale, 0.9)
 
         let bass = InstrumentPalette.from(instrumentId: "bass")
         XCTAssertGreaterThan(bass.bassAmpScale, bass.chordAmpScale)
