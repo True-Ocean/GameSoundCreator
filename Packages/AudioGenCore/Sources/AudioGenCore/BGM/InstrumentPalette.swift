@@ -1,5 +1,22 @@
 import Foundation
 
+/// Extra ring beyond the gated note length, plus optional FM-index decay.
+struct ToneTail: Sendable, Equatable {
+    /// Seconds written after the scheduled note duration (overlapping clear decay).
+    var ringOut: Double
+    /// FM index exponential time constant in seconds; 0 keeps index constant.
+    var fmDecay: Double
+
+    static let none = ToneTail(ringOut: 0, fmDecay: 0)
+
+    init(ringOut: Double = 0, fmDecay: Double = 0) {
+        self.ringOut = max(0, ringOut)
+        self.fmDecay = max(0, fmDecay)
+    }
+
+    var isActive: Bool { ringOut > 0.0001 || fmDecay > 0.0001 }
+}
+
 /// Timbre / envelope / FM / layer roles for a BGM instrument preset.
 struct InstrumentPalette: Sendable {
     var chordShape: WaveShape
@@ -39,6 +56,9 @@ struct InstrumentPalette: Sendable {
     var bassRootHeavy: Bool
     /// Soften hats for pad-like beds.
     var hatAmpScale: Float
+    var chordTail: ToneTail
+    var bassTail: ToneTail
+    var leadTail: ToneTail
 
     static func from(instrumentId: String) -> InstrumentPalette {
         switch Catalog.Instrument.resolve(instrumentId) {
@@ -70,7 +90,10 @@ struct InstrumentPalette: Sendable {
                 drumAmpScale: 1.05,
                 chordUpperAtten: 0.35,
                 bassRootHeavy: false,
-                hatAmpScale: 1.0
+                hatAmpScale: 1.0,
+                chordTail: .none,
+                bassTail: .none,
+                leadTail: .none
             )
         case .piano:
             // Plucky FM on lead/chords; balanced band, slightly softer drums.
@@ -100,7 +123,10 @@ struct InstrumentPalette: Sendable {
                 drumAmpScale: 0.88,
                 chordUpperAtten: 0.15,
                 bassRootHeavy: true,
-                hatAmpScale: 0.9
+                hatAmpScale: 0.9,
+                chordTail: .none,
+                bassTail: .none,
+                leadTail: .none
             )
         case .pad:
             // Chords dominate with slow shimmer FM; quiet lead; soft drums/hats.
@@ -130,7 +156,10 @@ struct InstrumentPalette: Sendable {
                 drumAmpScale: 0.7,
                 chordUpperAtten: 0.05,
                 bassRootHeavy: true,
-                hatAmpScale: 0.55
+                hatAmpScale: 0.55,
+                chordTail: .none,
+                bassTail: .none,
+                leadTail: .none
             )
         case .bass:
             // Low end is the star: growly bass FM, thin upper layers, punchy kick.
@@ -160,37 +189,44 @@ struct InstrumentPalette: Sendable {
                 drumAmpScale: 1.15,
                 chordUpperAtten: 0.55,
                 bassRootHeavy: true,
-                hatAmpScale: 0.75
+                hatAmpScale: 0.75,
+                chordTail: .none,
+                bassTail: .none,
+                leadTail: .none
             )
         case .musicBox:
-            // High tinkly bells: long decay, sparse drums, bright FM partials.
+            // Clear tine plucks: short gate, long exponential ring; FM dies into pure sine.
+            // envelope.decay = exponential tau when ring-out is active.
             return InstrumentPalette(
                 chordShape: .sine,
                 bassShape: .sine,
                 leadShape: .sine,
-                chordEnv: ADSR(attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.35),
-                bassEnv: ADSR(attack: 0.004, decay: 0.2, sustain: 0.12, release: 0.18),
-                leadEnv: ADSR(attack: 0.001, decay: 0.55, sustain: 0.03, release: 0.4),
-                chordAmpScale: 0.85,
-                bassAmpScale: 0.45,
-                leadAmpScale: 1.55,
-                chordDurationScale: 1.4,
-                bassDurationScale: 0.9,
-                leadDurationScale: 1.55,
-                muteBias: 0.2,
+                chordEnv: ADSR(attack: 0.001, decay: 0.35, sustain: 0, release: 0.08),
+                bassEnv: ADSR(attack: 0.004, decay: 0.22, sustain: 0, release: 0.08),
+                leadEnv: ADSR(attack: 0.001, decay: 0.48, sustain: 0, release: 0.1),
+                chordAmpScale: 0.28,
+                bassAmpScale: 0.28,
+                leadAmpScale: 1.65,
+                chordDurationScale: 0.7,
+                bassDurationScale: 0.75,
+                leadDurationScale: 0.7,
+                muteBias: 0.08,
                 leadOctaveBias: 1,
                 chordOctaveBias: 1,
                 melodyChanceScale: 1.15,
                 sustainChords: false,
-                filterCutoffScale: 1.25,
-                reverbMixBias: 0.14,
-                chordFM: FMTone(ratio: 3.5, index: 1.1),
-                bassFM: FMTone(ratio: 1.0, index: 0.1),
-                leadFM: FMTone(ratio: 4.0, index: 1.45),
-                drumAmpScale: 0.35,
-                chordUpperAtten: 0.1,
+                filterCutoffScale: 1.28,
+                reverbMixBias: 0.16,
+                chordFM: FMTone(ratio: 3.0, index: 0.4),
+                bassFM: FMTone(ratio: 1.0, index: 0.06),
+                leadFM: FMTone(ratio: 3.0, index: 0.9),
+                drumAmpScale: 0.22,
+                chordUpperAtten: 0.45,
                 bassRootHeavy: true,
-                hatAmpScale: 0.25
+                hatAmpScale: 0.15,
+                chordTail: ToneTail(ringOut: 0.75, fmDecay: 0.12),
+                bassTail: ToneTail(ringOut: 0.3, fmDecay: 0.08),
+                leadTail: ToneTail(ringOut: 1.35, fmDecay: 0.14)
             )
         case .organ:
             // Sustained church-like bed: slow attack, rich harmonics, soft drums.
@@ -220,7 +256,10 @@ struct InstrumentPalette: Sendable {
                 drumAmpScale: 0.55,
                 chordUpperAtten: 0.08,
                 bassRootHeavy: true,
-                hatAmpScale: 0.4
+                hatAmpScale: 0.4,
+                chordTail: .none,
+                bassTail: .none,
+                leadTail: .none
             )
         case .guitar:
             // Bright plucks with mild bite; mid drums; adventure-friendly.
@@ -250,7 +289,10 @@ struct InstrumentPalette: Sendable {
                 drumAmpScale: 0.92,
                 chordUpperAtten: 0.2,
                 bassRootHeavy: false,
-                hatAmpScale: 0.85
+                hatAmpScale: 0.85,
+                chordTail: .none,
+                bassTail: .none,
+                leadTail: .none
             )
         }
     }

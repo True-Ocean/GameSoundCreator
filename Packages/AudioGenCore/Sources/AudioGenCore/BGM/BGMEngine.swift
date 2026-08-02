@@ -173,7 +173,8 @@ public struct BGMEngine: Sendable {
                         shape: instrument.bassShape,
                         mute: mute,
                         envelope: instrument.bassEnv,
-                        fm: instrument.bassFM
+                        fm: instrument.bassFM,
+                        tail: instrument.bassTail
                     )
                 }
 
@@ -205,7 +206,8 @@ public struct BGMEngine: Sendable {
                             shape: instrument.chordShape,
                             mute: mute,
                             envelope: instrument.chordEnv,
-                            fm: instrument.chordFM
+                            fm: instrument.chordFM,
+                            tail: instrument.chordTail
                         )
                     }
                 }
@@ -229,7 +231,8 @@ public struct BGMEngine: Sendable {
                             shape: instrument.leadShape,
                             mute: mute * 0.7,
                             envelope: instrument.leadEnv,
-                            fm: instrument.leadFM
+                            fm: instrument.leadFM,
+                            tail: instrument.leadTail
                         )
                     }
                 }
@@ -346,39 +349,71 @@ public struct BGMEngine: Sendable {
         shape: WaveShape,
         mute: Float,
         envelope: ADSR,
-        fm: FMTone = .off
+        fm: FMTone = .off,
+        tail: ToneTail = .none
     ) {
-        let length = max(1, Int(duration * sampleRate))
+        let ringOut = max(0, tail.ringOut)
+        let totalDuration = duration + ringOut
+        let length = max(1, Int(totalDuration * sampleRate))
         var carrierPhase = 0.0
         var modulatorPhase = 0.0
-        let release = min(envelope.release, max(0.02, duration * 0.4))
+        let useRing = ringOut > 0.0001
+        let release = min(envelope.release, max(0.02, (useRing ? totalDuration : duration) * 0.4))
         let env = ADSR(
-            attack: min(envelope.attack, duration * 0.45),
+            attack: min(envelope.attack, (useRing ? totalDuration : duration) * 0.45),
             decay: envelope.decay,
             sustain: envelope.sustain,
             release: release
         )
         let useFM = fm.isActive
+        let fmDecay = tail.fmDecay
         for i in 0..<length {
             let idx = start + i
             guard idx < samples.count else { break }
             let t = Double(i) / sampleRate
             carrierPhase += freq / sampleRate
+
+            let e: Float
+            if useRing {
+                // Short strike, then exponential ring (decay = tau). Clear overlapping tones.
+                let atk = min(envelope.attack, max(0.0005, totalDuration * 0.08))
+                if t < atk {
+                    e = atk > 0 ? Float(t / atk) : 1
+                } else {
+                    let tau = max(0.05, envelope.decay)
+                    var level = Float(exp(-(t - atk) / tau))
+                    let fadeStart = totalDuration * 0.88
+                    if t > fadeStart, totalDuration > fadeStart {
+                        level *= Float(max(0, 1 - (t - fadeStart) / (totalDuration - fadeStart)))
+                    }
+                    e = level
+                }
+            } else {
+                e = env.level(at: t, duration: duration)
+            }
+
+            var index = fm.index
+            if useFM, fmDecay > 0.0001 {
+                index *= exp(-t / fmDecay)
+            }
+            // As FM dies, lean toward pure sine so the ring stays clear.
+            let fmRemain = useFM && fm.index > 0.0001 ? Float(min(1, index / fm.index)) : 0
+            let softMute = min(1, mute + (1 - mute) * (1 - fmRemain) * (useFM && fmDecay > 0.0001 ? 0.85 : 0))
+
             let raw: Float
-            if useFM {
+            if useFM, index > 0.0001 {
                 modulatorPhase += freq * fm.ratio / sampleRate
                 raw = SynthDSP.fmOsc(
                     shape: shape,
                     carrierPhase: carrierPhase,
                     modulatorPhase: modulatorPhase,
-                    index: fm.index
+                    index: index
                 )
             } else {
                 raw = SynthDSP.osc(shape, phase: carrierPhase)
             }
             let soft = SynthDSP.osc(.sine, phase: carrierPhase)
-            let e = env.level(at: t, duration: duration)
-            samples[idx] += SynthDSP.mix(raw, soft, t: mute) * e * amp
+            samples[idx] += SynthDSP.mix(raw, soft, t: softMute) * e * amp
         }
     }
 

@@ -324,8 +324,20 @@ final class AudioGenCoreTests: XCTestCase {
 
         let musicBox = InstrumentPalette.from(instrumentId: "music_box")
         XCTAssertGreaterThan(musicBox.leadOctaveBias, 0)
-        XCTAssertGreaterThan(musicBox.leadFM.index, 1.0)
+        // Integer-ratio FM for metallic tine sheen without inharmonic pitch blur.
+        XCTAssertEqual(musicBox.leadFM.ratio.truncatingRemainder(dividingBy: 1), 0, accuracy: 0.001)
+        XCTAssertGreaterThanOrEqual(musicBox.leadFM.ratio, 3.0)
+        XCTAssertGreaterThan(musicBox.leadFM.index, 0.6)
+        XCTAssertLessThan(musicBox.leadFM.index, 1.1)
+        XCTAssertEqual(musicBox.chordFM.ratio.truncatingRemainder(dividingBy: 1), 0, accuracy: 0.001)
+        XCTAssertLessThan(musicBox.muteBias, 0.2)
         XCTAssertLessThan(musicBox.drumAmpScale, 0.5)
+        XCTAssertLessThan(musicBox.leadDurationScale, 1.1)
+        // Ring-out + FM decay: short gate, long clear tine tail.
+        XCTAssertGreaterThan(musicBox.leadTail.ringOut, 1.0)
+        XCTAssertGreaterThan(musicBox.leadTail.fmDecay, 0.05)
+        XCTAssertGreaterThan(musicBox.chordTail.ringOut, 0.4)
+        XCTAssertFalse(InstrumentPalette.from(instrumentId: "piano").leadTail.isActive)
 
         let organ = InstrumentPalette.from(instrumentId: "organ")
         XCTAssertTrue(organ.sustainChords)
