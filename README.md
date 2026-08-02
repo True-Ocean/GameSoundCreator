@@ -63,6 +63,7 @@
 | [docs/ROADMAP.md](docs/ROADMAP.md) | フェーズ別ロードマップとマイルストーン |
 | [docs/SOUND_PLAN.md](docs/SOUND_PLAN.md) | 音質ゴールと音色・作曲（メロディ）の実装方針（Phase 3.5） |
 | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | 開発環境セットアップ（Xcode / Apple ID / Cursor） |
+| [docs/APP_STORE.md](docs/APP_STORE.md) | App Store 掲載準備（アカウント・規約・素材・提出手順） |
 
 ---
 
