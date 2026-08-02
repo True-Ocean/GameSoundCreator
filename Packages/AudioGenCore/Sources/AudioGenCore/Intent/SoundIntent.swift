@@ -55,7 +55,7 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
         self.purposeId = purposeId
         self.moodId = moodId
         self.lengthId = lengthId.isEmpty
-            ? (soundType == .bgm ? Catalog.BGMLength.bars16.rawValue : Catalog.SFXLength.medium.rawValue)
+            ? (soundType == .bgm ? Catalog.BGMLength.bars8.rawValue : Catalog.SFXLength.medium.rawValue)
             : lengthId
         self.instrumentId = instrumentId
         self.seed = seed

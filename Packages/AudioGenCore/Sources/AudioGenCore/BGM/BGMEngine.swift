@@ -18,7 +18,8 @@ public struct BGMEngine: Sendable {
         var samples = [Float](repeating: 0, count: frames)
         var rng = SeededGenerator(seed: recipe.params.seed)
 
-        let progressionPick = Int(rng.unit() * 64)
+        // Seed-mixed pick explores more progression families / rotations.
+        let progressionPick = Int((recipe.params.seed &* 0x9E37_79B9) >> 17) % 128
         let progression = MusicTheory.progression(
             for: recipe.preset,
             moodId: recipe.params.moodId,
@@ -35,8 +36,10 @@ public struct BGMEngine: Sendable {
         let density = recipe.params.density
         let rhythm = recipe.params.rhythm
         let pitch = recipe.params.pitchSemitones
-        // Transpose the whole arrangement by shifting the key root.
-        let key = MusicalKey(root: recipe.params.key.root + pitch, mode: recipe.params.key.mode)
+        // User pitch + mild seed transpose (mode preserved) so 別パターン shifts key family.
+        let seedTranspose = MusicTheory.seedTransposeSemitones(seed: recipe.params.seed)
+        let root = ((recipe.params.key.root + pitch + seedTranspose) % 12 + 12) % 12
+        let key = MusicalKey(root: root, mode: recipe.params.key.mode)
 
         // Rhythm slider drives drum subdivision / fills (audible sparse ↔ busy).
         let hatEvery: Int

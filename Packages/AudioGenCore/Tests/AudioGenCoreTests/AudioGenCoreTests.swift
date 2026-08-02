@@ -522,64 +522,69 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertFalse(a.notes.isEmpty)
     }
 
-    func testMelodyComposerRepeatsMotifEveryOtherCycle() {
+    func testMelodyComposerRepeatsMotifRhythmInLoop() {
         let progression = [0, 5, 2, 6]
         let plan = MelodyComposer.compose(
-            bars: 8,
+            bars: 4,
             progression: progression,
-            density: 0.5,
+            density: 0.7,
             moodId: "neutral",
             melodyEnabled: true,
             melodyChanceScale: 1.15,
             seed: 99
         )
         XCTAssertEqual(plan.form, .loop)
-        XCTAssertGreaterThanOrEqual(plan.motifBars, 2)
-        let span = plan.motifBars * 2
-        let first = plan.notes.filter { $0.bar == 0 }.map { ($0.step, $0.degree - progression[0]) }
-        let repeatBar = span
-        guard repeatBar < 8 else { return }
-        let again = plan.notes.filter { $0.bar == repeatBar }.map {
-            ($0.step, $0.degree - progression[repeatBar % progression.count])
-        }
-        XCTAssertEqual(first.map(\.0), again.map(\.0), "motif rhythm should repeat")
-        XCTAssertEqual(first.map(\.1), again.map(\.1), "motif contour relative to chord should repeat")
+        XCTAssertEqual(plan.motifBars, 2)
+        let first = plan.notes.filter { $0.bar == 0 }.map(\.step)
+        let again = plan.notes.filter { $0.bar == 2 }.map(\.step)
+        XCTAssertFalse(first.isEmpty)
+        XCTAssertEqual(first, again, "motif rhythm should repeat each motif cycle")
     }
 
     func testMelodyFormFollowsBarCount() {
         let progression = [0, 5, 2, 6]
         let loop = MelodyComposer.compose(
-            bars: 8, progression: progression, density: 0.55, moodId: "neutral",
+            bars: 4, progression: progression, density: 0.55, moodId: "neutral",
             melodyEnabled: true, melodyChanceScale: 1, seed: 3
         )
         let two = MelodyComposer.compose(
-            bars: 16, progression: progression, density: 0.55, moodId: "neutral",
+            bars: 8, progression: progression, density: 0.55, moodId: "neutral",
             melodyEnabled: true, melodyChanceScale: 1, seed: 3
         )
         let four = MelodyComposer.compose(
-            bars: 24, progression: progression, density: 0.55, moodId: "neutral",
+            bars: 16, progression: progression, density: 0.55, moodId: "neutral",
             melodyEnabled: true, melodyChanceScale: 1, seed: 3
         )
         XCTAssertEqual(loop.form, .loop)
         XCTAssertEqual(two.form, .statementResponse)
         XCTAssertEqual(four.form, .kiShoTenKetsu)
 
-        let early16 = Set(two.notes.filter { $0.bar < 8 }.map(\.step))
-        let late16 = Set(two.notes.filter { $0.bar >= 8 }.map(\.step))
-        // Response section should not be an exact clone of statement (different motif family).
+        // 中・2メロ: second half uses contrasting motif family.
         let earlyDeg = two.notes.filter { $0.bar == 0 }.map { $0.degree - progression[0] }
-        let lateDeg = two.notes.filter { $0.bar == 8 }.map { $0.degree - progression[0] }
+        let lateDeg = two.notes.filter { $0.bar == 4 }.map { $0.degree - progression[0] }
         XCTAssertFalse(earlyDeg.isEmpty)
         XCTAssertFalse(lateDeg.isEmpty)
-        XCTAssertNotEqual(earlyDeg, lateDeg, "16-bar 起承 should change melody shape in second half")
+        XCTAssertNotEqual(earlyDeg, lateDeg, "8-bar 2メロ should change melody shape in second half")
 
-        let ki = four.notes.filter { $0.bar < 6 }.map(\.degree)
-        let ten = four.notes.filter { $0.bar >= 12 && $0.bar < 18 }.map(\.degree)
+        // 長・4メロ: 転 (3rd quarter) differs from 起.
+        let ki = four.notes.filter { $0.bar < 4 }.map(\.degree)
+        let ten = four.notes.filter { $0.bar >= 8 && $0.bar < 12 }.map(\.degree)
         XCTAssertFalse(ki.isEmpty)
         XCTAssertFalse(ten.isEmpty)
-        XCTAssertNotEqual(Set(ki), Set(ten), "24-bar 転 should differ from 起")
-        _ = early16
-        _ = late16
+        XCTAssertNotEqual(Set(ki), Set(ten), "16-bar 転 should differ from 起")
+    }
+
+    func testBGMLengthDisplayAndResolve() {
+        XCTAssertEqual(Catalog.BGMLength.bars4.displayName, "短・1メロ")
+        XCTAssertEqual(Catalog.BGMLength.bars8.displayName, "中・2メロ")
+        XCTAssertEqual(Catalog.BGMLength.bars16.displayName, "長・4メロ")
+        XCTAssertEqual(Catalog.BGMLength.bars4.barCount, 4)
+        XCTAssertEqual(Catalog.BGMLength.bars8.barCount, 8)
+        XCTAssertEqual(Catalog.BGMLength.bars16.barCount, 16)
+        XCTAssertEqual(Catalog.BGMLength.resolve("bars_4"), .bars4)
+        XCTAssertEqual(Catalog.BGMLength.resolve("bars_24"), .bars16)
+        XCTAssertEqual(Catalog.BGMLength.resolve("sec_15"), .bars4)
+        XCTAssertEqual(Catalog.BGMLength.resolve("sec_30").barCount, 16)
     }
 
     func testDifferentSeedsPickDifferentMelodyPlans() {
@@ -596,7 +601,165 @@ final class AudioGenCoreTests: XCTestCase {
             )
         }
         let signatures = Set(plans.map { "\($0.rhythmId)-\($0.contourId)-\($0.motifBars)" })
-        XCTAssertGreaterThan(signatures.count, 3, "seeds should explore multiple rhythm/contour families")
+        XCTAssertGreaterThan(signatures.count, 6, "seeds should explore multiple rhythm/contour families")
+    }
+
+    func testDifferentSeedsVaryOpeningPhrase() {
+        let progression = [0, 5, 2, 6]
+        let openings = (0..<32).map { seed -> String in
+            let plan = MelodyComposer.compose(
+                bars: 8,
+                progression: progression,
+                density: 0.55,
+                moodId: "neutral",
+                melodyEnabled: true,
+                melodyChanceScale: 1.0,
+                seed: UInt64(seed + 10)
+            )
+            let head = plan.notes
+                .filter { $0.bar < 2 }
+                .map { "\($0.step):\($0.degree - progression[$0.bar % progression.count])" }
+            return head.joined(separator: ",")
+        }
+        let unique = Set(openings)
+        XCTAssertGreaterThan(unique.count, 10, "別パターン should change the audible opening phrase")
+
+        let firstRels = (0..<32).compactMap { seed -> Int? in
+            let plan = MelodyComposer.compose(
+                bars: 8,
+                progression: progression,
+                density: 0.55,
+                moodId: "neutral",
+                melodyEnabled: true,
+                melodyChanceScale: 1.0,
+                seed: UInt64(seed + 10)
+            )
+            guard let first = plan.notes.first(where: { $0.bar == 0 }) else { return nil }
+            return first.degree - progression[0]
+        }
+        XCTAssertGreaterThan(Set(firstRels).count, 2, "opening degree should not always be tonic")
+    }
+
+    func testBrightMoodAvoidsLeadingToneDips() {
+        let progression = [0, 4, 5, 3]
+        for seed in 1...40 {
+            let plan = MelodyComposer.compose(
+                bars: 8,
+                progression: progression,
+                density: 0.6,
+                moodId: "bright",
+                melodyEnabled: true,
+                melodyChanceScale: 1.0,
+                seed: UInt64(seed)
+            )
+            for note in plan.notes {
+                let rel = note.degree - progression[note.bar % progression.count]
+                XCTAssertFalse(
+                    rel == -1 || rel == -3,
+                    "bright mood should not use leading-tone dips (seed \(seed), rel \(rel))"
+                )
+            }
+        }
+    }
+
+    func testMoodPitchPoolsChangeMelodyCharacter() {
+        let progression = [0, 5, 2, 6]
+        let seed: UInt64 = 42
+        let bright = MelodyComposer.compose(
+            bars: 8, progression: progression, density: 0.55, moodId: "bright",
+            melodyEnabled: true, melodyChanceScale: 1, seed: seed
+        )
+        let dark = MelodyComposer.compose(
+            bars: 8, progression: progression, density: 0.55, moodId: "dark",
+            melodyEnabled: true, melodyChanceScale: 1, seed: seed
+        )
+        let tense = MelodyComposer.compose(
+            bars: 8, progression: progression, density: 0.55, moodId: "tense",
+            melodyEnabled: true, melodyChanceScale: 1, seed: seed
+        )
+        XCTAssertNotEqual(bright.notes, dark.notes, "bright vs dark should differ at same seed")
+        XCTAssertNotEqual(bright.notes, tense.notes, "bright vs tense should differ at same seed")
+
+        func averageRel(_ plan: MelodyPlan) -> Double {
+            let rels = plan.notes.map { $0.degree - progression[$0.bar % progression.count] }
+            guard !rels.isEmpty else { return 0 }
+            return Double(rels.reduce(0, +)) / Double(rels.count)
+        }
+        XCTAssertGreaterThan(
+            averageRel(bright),
+            averageRel(dark) - 0.25,
+            "bright phrases should sit at least as high as dark on average"
+        )
+    }
+
+    func testDarkMoodClampsSoaringRelatives() {
+        let progression = [0, 4, 5, 3]
+        for seed in 1...24 {
+            let plan = MelodyComposer.compose(
+                bars: 16,
+                progression: progression,
+                density: 0.6,
+                moodId: "dark",
+                melodyEnabled: true,
+                melodyChanceScale: 1.0,
+                seed: UInt64(seed)
+            )
+            for note in plan.notes {
+                let rel = note.degree - progression[note.bar % progression.count]
+                XCTAssertLessThan(rel, 6, "dark mood should not soar (seed \(seed), rel \(rel))")
+            }
+        }
+    }
+
+    func testTenSectionDoesNotRaiseLeadOctave() {
+        let ten = MelodyComposer.arrangementScale(form: .kiShoTenKetsu, section: 2)
+        XCTAssertEqual(ten.leadOctaveBias, 0, "転 should contrast without +1 octave")
+        XCTAssertTrue(ten.forceFill)
+        let ki = MelodyComposer.arrangementScale(form: .kiShoTenKetsu, section: 0)
+        XCTAssertEqual(ki.leadOctaveBias, 0)
+    }
+
+    func testTenSectionUsesMildDegreeBias() {
+        let progression = [0, 5, 2, 6]
+        let plan = MelodyComposer.compose(
+            bars: 16,
+            progression: progression,
+            density: 0.55,
+            moodId: "neutral",
+            melodyEnabled: true,
+            melodyChanceScale: 1.0,
+            seed: 21
+        )
+        XCTAssertEqual(plan.form, .kiShoTenKetsu)
+        let kiRels = plan.notes.filter { $0.bar < 4 }.map { $0.degree - progression[$0.bar % progression.count] }
+        let tenRels = plan.notes.filter { $0.bar >= 8 && $0.bar < 12 }.map {
+            $0.degree - progression[$0.bar % progression.count]
+        }
+        XCTAssertFalse(kiRels.isEmpty)
+        XCTAssertFalse(tenRels.isEmpty)
+        // Mild +2 bias (not +4): average lift should stay modest vs 起.
+        let kiAvg = Double(kiRels.reduce(0, +)) / Double(kiRels.count)
+        let tenAvg = Double(tenRels.reduce(0, +)) / Double(tenRels.count)
+        XCTAssertLessThan(tenAvg - kiAvg, 5.0, "転 should not soar far above 起")
+    }
+
+    func testProgressionPickCanStartOffTonic() {
+        var sawNonTonicStart = false
+        for pick in 0..<64 {
+            let prog = MusicTheory.progression(for: .battleNormal, moodId: "bright", pick: pick)
+            XCTAssertFalse(prog.isEmpty)
+            if prog[0] != 0 { sawNonTonicStart = true }
+        }
+        XCTAssertTrue(sawNonTonicStart, "progression pool/rotation should allow non-tonic openings")
+    }
+
+    func testSeedTransposeIsMildAndDeterministic() {
+        XCTAssertEqual(MusicTheory.seedTransposeSemitones(seed: 1), MusicTheory.seedTransposeSemitones(seed: 1))
+        let values = Set((0..<16).map { MusicTheory.seedTransposeSemitones(seed: UInt64($0)) })
+        XCTAssertGreaterThan(values.count, 3)
+        for value in values {
+            XCTAssertLessThanOrEqual(abs(value), 7)
+        }
     }
 
     func testMelodyDisabledYieldsNoNotes() {

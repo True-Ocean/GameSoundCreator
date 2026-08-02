@@ -135,10 +135,10 @@ public enum Catalog {
             switch self {
             case .opening, .title, .settings, .gachaOrReward,
                  .resultWin, .resultLose, .resultHappyEnd, .resultBadEnd:
-                return .bars8
+                return .bars4
             case .menuMain, .shop, .story, .adventure, .explore,
                  .battleNormal, .battleBoss, .battleEasy, .battleHard, .battleExtra, .battlePinch:
-                return .bars16
+                return .bars8
             }
         }
     }
@@ -369,32 +369,33 @@ public enum Catalog {
 
     public enum BGMLength: String, CaseIterable, Sendable {
         /// Musical phrase lengths (4/4). Always a multiple of a 4-bar progression cycle.
+        /// Form: 4=1メロ(くり返し) / 8=2メロ(起承) / 16=4メロ(起承転結).
+        case bars4 = "bars_4"
         case bars8 = "bars_8"
         case bars16 = "bars_16"
-        case bars24 = "bars_24"
 
         public var displayName: String {
             switch self {
-            case .bars8: return "8・繰返"
-            case .bars16: return "16・起承"
-            case .bars24: return "24・転結"
+            case .bars4: return "短・1メロ"
+            case .bars8: return "中・2メロ"
+            case .bars16: return "長・4メロ"
             }
         }
 
         /// Short UI caption for how length shapes phrase form.
         public var formHint: String {
             switch self {
-            case .bars8: return "くり返し"
-            case .bars16: return "起承"
-            case .bars24: return "起承転結"
+            case .bars4: return "1メロ"
+            case .bars8: return "2メロ"
+            case .bars16: return "4メロ"
             }
         }
 
         public var barCount: Int {
             switch self {
+            case .bars4: return 4
             case .bars8: return 8
             case .bars16: return 16
-            case .bars24: return 24
             }
         }
 
@@ -404,17 +405,19 @@ public enum Catalog {
             return String(format: "目安 約%.0f秒＠120BPM", sec)
         }
 
-        /// Resolve current + legacy length IDs (`sec_15` etc.).
+        /// Resolve current + legacy length IDs (`sec_15` / `bars_24` etc.).
         public static func resolve(_ lengthId: String) -> BGMLength {
             switch lengthId {
-            case bars8.rawValue, "sec_15":
+            case bars4.rawValue, "sec_15":
+                return .bars4
+            case bars8.rawValue:
                 return .bars8
             case bars16.rawValue, "sec_30":
                 return .bars16
-            case bars24.rawValue, "sec_45", "bars_32":
-                return .bars24
-            default:
+            case "bars_24", "sec_45", "bars_32":
                 return .bars16
+            default:
+                return .bars8
             }
         }
     }

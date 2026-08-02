@@ -523,17 +523,13 @@ struct StudioView: View {
                 .tint(theme.accent)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("雰囲気")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.secondaryText)
-                Picker("雰囲気", selection: sfxMoodIdBinding) {
-                    ForEach(Catalog.moods) { item in
-                        Text(item.displayName).tag(item.id)
-                    }
+            Picker("雰囲気", selection: sfxMoodIdBinding) {
+                ForEach(Catalog.moods) { item in
+                    Text(item.displayName).tag(item.id)
                 }
-                .pickerStyle(.segmented)
             }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("雰囲気")
 
             VStack(spacing: 12) {
                 compactSlider("高さ", value: $sfxPitch, range: 0.5...2.0)
@@ -628,29 +624,21 @@ struct StudioView: View {
                 .tint(theme.accent)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("雰囲気")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.secondaryText)
-                Picker("雰囲気", selection: bgmMoodIdBinding) {
-                    ForEach(Catalog.moods) { item in
-                        Text(item.displayName).tag(item.id)
-                    }
+            Picker("雰囲気", selection: bgmMoodIdBinding) {
+                ForEach(Catalog.moods) { item in
+                    Text(item.displayName).tag(item.id)
                 }
-                .pickerStyle(.segmented)
             }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("雰囲気")
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("長さ・展開")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.secondaryText)
-                Picker("長さ・展開", selection: bgmLengthIdBinding) {
-                    ForEach(Catalog.bgmLengths) { item in
-                        Text(item.displayName).tag(item.id)
-                    }
+            Picker("長さ", selection: bgmLengthIdBinding) {
+                ForEach(Catalog.bgmLengths) { item in
+                    Text(item.displayName).tag(item.id)
                 }
-                .pickerStyle(.segmented)
             }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("長さ")
 
             HStack {
                 HStack(spacing: 8) {
@@ -668,8 +656,6 @@ struct StudioView: View {
                 }
             }
 
-            StudioPlaybackProgress(monitor: monitor)
-
             VStack(spacing: 12) {
                 compactSlider("テンポ", value: $bgmTempo, range: 80...160, step: 1)
                 compactSlider("ピッチ", value: $bgmPitch, range: -6...6, step: 1)
@@ -677,6 +663,9 @@ struct StudioView: View {
             }
 
             Spacer(minLength: 0)
+
+            // 微調整の下・再生／別パターンの上
+            StudioPlaybackProgress(monitor: monitor)
 
             studioBottomPlaybackControls
         }
