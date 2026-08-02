@@ -300,6 +300,8 @@ struct StudioView: View {
     @State private var bgmPitch: Double = 0
     @State private var bgmRhythm: Double = 0.5
     @State private var bgmMelody = true
+    /// Tempo for the current scene's default mood (set on scene apply / generate sync).
+    @State private var bgmSceneDefaultTempo: Double?
 
     private var service: GenerationService { GenerationService.shared }
 
@@ -315,11 +317,24 @@ struct StudioView: View {
         _loopEnabled = State(initialValue: soundType == .bgm)
         if soundType == .bgm {
             let scene = Catalog.BGMScene.battleNormal
+            let instrument = Catalog.Instrument.defaultFor(scene: scene).rawValue
+            let mood = scene.defaultMood.rawValue
+            let length = scene.defaultLength.rawValue
             _sceneGroup = State(initialValue: scene.group)
             _sceneId = State(initialValue: scene.rawValue)
-            _moodId = State(initialValue: scene.defaultMood.rawValue)
-            _lengthId = State(initialValue: scene.defaultLength.rawValue)
-            _instrumentId = State(initialValue: Catalog.Instrument.defaultFor(scene: scene).rawValue)
+            _moodId = State(initialValue: mood)
+            _lengthId = State(initialValue: length)
+            _instrumentId = State(initialValue: instrument)
+            if let tempo = Self.mappedBGMTempo(
+                genreId: Catalog.Genre.cardBattle.rawValue,
+                sceneId: scene.rawValue,
+                moodId: mood,
+                lengthId: length,
+                instrumentId: instrument
+            ) {
+                _bgmTempo = State(initialValue: tempo)
+                _bgmSceneDefaultTempo = State(initialValue: tempo)
+            }
         } else {
             let purpose = Catalog.SFXPurpose.attackLight
             _moodId = State(initialValue: Catalog.Mood.neutral.rawValue)
@@ -345,6 +360,22 @@ struct StudioView: View {
         _seed = State(initialValue: intent.seed ?? UInt64.random(in: 1...999_999))
         if let purpose = Catalog.SFXPurpose(rawValue: intent.purposeId ?? "") {
             _purposeGroup = State(initialValue: purpose.group)
+        }
+        if intent.soundType == .bgm {
+            let instrument = Catalog.Instrument.resolve(intent.instrumentId).rawValue
+            let defaultMood = scene.defaultMood.rawValue
+            if let tempo = Self.mappedBGMTempo(
+                genreId: intent.genreId,
+                sceneId: scene.rawValue,
+                moodId: defaultMood,
+                lengthId: intent.lengthId.isEmpty ? scene.defaultLength.rawValue : intent.lengthId,
+                instrumentId: instrument
+            ) {
+                _bgmSceneDefaultTempo = State(initialValue: tempo)
+                if intent.moodId == defaultMood {
+                    _bgmTempo = State(initialValue: tempo)
+                }
+            }
         }
     }
 
@@ -501,26 +532,18 @@ struct StudioView: View {
     /// SFX: all controls on one screen (no modal, no scroll).
     private var sfxStudioBody: some View {
         VStack(spacing: 14) {
-            studioMenuRow(title: "カテゴリ") {
-                Picker("カテゴリ", selection: sfxPurposeGroupBinding) {
-                    ForEach(Catalog.sfxPurposeGroupOrder, id: \.self) { group in
-                        Text(group).tag(group)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(theme.accent)
-            }
+            HStack(spacing: 10) {
+                studioValueMenu(
+                    accessibilityLabel: "カテゴリ",
+                    selection: sfxPurposeGroupBinding,
+                    options: Catalog.sfxPurposeGroupOrder.map { ($0, $0) }
+                )
 
-            studioMenuRow(title: "用途") {
-                Picker("用途", selection: sfxPurposeIdBinding) {
-                    ForEach(Catalog.sfxPurposes(in: purposeGroup), id: \.rawValue) { purpose in
-                        Text(purpose.displayName).tag(purpose.rawValue)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(theme.accent)
+                studioValueMenu(
+                    accessibilityLabel: "用途",
+                    selection: sfxPurposeIdBinding,
+                    options: Catalog.sfxPurposes(in: purposeGroup).map { ($0.rawValue, $0.displayName) }
+                )
             }
 
             Picker("雰囲気", selection: sfxMoodIdBinding) {
@@ -537,9 +560,17 @@ struct StudioView: View {
                 compactSlider("強さ", value: $sfxIntensity, range: 0...1)
                 compactSlider("長さ", value: $sfxDurationMs, range: 50...1200, step: 10)
                 compactSlider("音数", value: $sfxNoteCount, range: 1...8, step: 1)
+
+                studioResetDefaultsButton(action: resetSFXToDefaults)
             }
 
             Spacer(minLength: 0)
+
+            studioSectionDivider
+
+            studioToggleRow(title: "ループ", isOn: studioLoopBinding)
+
+            StudioPlaybackProgress(monitor: monitor)
 
             studioBottomPlaybackControls
         }
@@ -593,38 +624,25 @@ struct StudioView: View {
         VStack(spacing: 16) {
             // Stops playback when changed.
             VStack(spacing: 10) {
-                studioMenuRow(title: "使う場所") {
-                    Picker("使う場所", selection: bgmSceneGroupBinding) {
-                        ForEach(Catalog.bgmSceneGroupOrder, id: \.self) { group in
-                            Text(group).tag(group)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .tint(theme.accent)
+                HStack(spacing: 10) {
+                    studioValueMenu(
+                        accessibilityLabel: "カテゴリ",
+                        selection: bgmSceneGroupBinding,
+                        options: Catalog.bgmSceneGroupOrder.map { ($0, $0) }
+                    )
+
+                    studioValueMenu(
+                        accessibilityLabel: "用途",
+                        selection: bgmSceneIdBinding,
+                        options: Catalog.bgmScenes(in: sceneGroup).map { ($0.rawValue, $0.displayName) }
+                    )
                 }
 
-                studioMenuRow(title: "用途") {
-                    Picker("用途", selection: bgmSceneIdBinding) {
-                        ForEach(Catalog.bgmScenes(in: sceneGroup), id: \.rawValue) { scene in
-                            Text(scene.displayName).tag(scene.rawValue)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .tint(theme.accent)
-                }
-
-                studioMenuRow(title: "音色イメージ") {
-                    Picker("音色イメージ", selection: bgmInstrumentIdBinding) {
-                        ForEach(Catalog.instruments) { item in
-                            Text(item.displayName).tag(item.id)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .tint(theme.accent)
-                }
+                studioValueMenu(
+                    accessibilityLabel: "音色イメージ",
+                    selection: bgmInstrumentIdBinding,
+                    options: Catalog.instruments.map { ($0.id, $0.displayName) }
+                )
 
                 Picker("長さ", selection: bgmLengthIdBinding) {
                     ForEach(Catalog.bgmLengths) { item in
@@ -654,13 +672,15 @@ struct StudioView: View {
                 }
 
                 studioToggleRow(title: "メロディ", isOn: $bgmMelody)
+
+                studioResetDefaultsButton(action: resetBGMToDefaults)
             }
 
             Spacer(minLength: 0)
 
             studioSectionDivider
 
-            studioToggleRow(title: "ループ", isOn: bgmLoopBinding)
+            studioToggleRow(title: "ループ", isOn: studioLoopBinding)
 
             StudioPlaybackProgress(monitor: monitor)
 
@@ -681,19 +701,53 @@ struct StudioView: View {
         }
     }
 
-    private func studioMenuRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.secondaryText)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            Spacer(minLength: 12)
-            content()
+    /// Value-only menu chrome: selected title on one centered line (role via accessibility).
+    private func studioValueMenu(
+        accessibilityLabel: String,
+        selection: Binding<String>,
+        options: [(id: String, title: String)]
+    ) -> some View {
+        let title = options.first(where: { $0.id == selection.wrappedValue })?.title ?? accessibilityLabel
+        return Menu {
+            Picker(selection: selection) {
+                ForEach(options, id: \.id) { option in
+                    Text(option.title).tag(option.id)
+                }
+            } label: {
+                EmptyView()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Spacer(minLength: 0)
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .layoutPriority(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(theme.accent)
         }
-        .padding(.horizontal, 14)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(title)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 10)
         .padding(.vertical, 10)
         .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func studioResetDefaultsButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("設定リセット")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.bordered)
+        .tint(theme.accent)
+        .disabled(isBusy)
     }
 
     private var studioSectionDivider: some View {
@@ -720,9 +774,13 @@ struct StudioView: View {
 
     // MARK: Catalog bindings
     // BGM UI order mirrors behavior:
-    //   使う場所／用途／音色イメージ／長さ → 停止して再生待ち
+    //   カテゴリ／用途／音色イメージ／長さ → 停止して再生待ち
     //   雰囲気・テンポ／ピッチ／リズム・メロディ → 再生中は旧音継続のまま再生成し切替
     //   ループ → 再生位置を保ったまま即反映
+    // SFX: カテゴリ／用途／雰囲気 → 停止して再生待ち
+    //   スライダー → 次回再生時に反映
+    //   ループ → 再生中は即反映
+    //   設定リセット → 雰囲気・スライダー・長さ・音数を初期化
 
     private var bgmSceneGroupBinding: Binding<String> {
         Binding(
@@ -780,13 +838,13 @@ struct StudioView: View {
         )
     }
 
-    private var bgmLoopBinding: Binding<Bool> {
+    private var studioLoopBinding: Binding<Bool> {
         Binding(
             get: { loopEnabled },
             set: { newValue in
                 guard newValue != loopEnabled else { return }
                 loopEnabled = newValue
-                applyBGMLoopImmediate()
+                applyLoopImmediate()
             }
         )
     }
@@ -897,6 +955,50 @@ struct StudioView: View {
         moodId = scene.defaultMood.rawValue
         lengthId = scene.defaultLength.rawValue
         instrumentId = Catalog.Instrument.defaultFor(scene: scene).rawValue
+        applyBGMSceneDefaultFineTune(for: scene)
+    }
+
+    /// Resets pitch/rhythm/melody and sets tempo to the scene's default-mood mapping.
+    private func applyBGMSceneDefaultFineTune(for scene: Catalog.BGMScene) {
+        suppressFineTuneReact = true
+        bgmPitch = 0
+        bgmRhythm = 0.5
+        bgmMelody = true
+        if let tempo = Self.mappedBGMTempo(
+            genreId: genreId,
+            sceneId: scene.rawValue,
+            moodId: scene.defaultMood.rawValue,
+            lengthId: lengthId,
+            instrumentId: instrumentId
+        ) {
+            bgmTempo = tempo
+            bgmSceneDefaultTempo = tempo
+        } else {
+            bgmSceneDefaultTempo = nil
+        }
+        Task { @MainActor in suppressFineTuneReact = false }
+    }
+
+    private static func mappedBGMTempo(
+        genreId: String,
+        sceneId: String,
+        moodId: String,
+        lengthId: String,
+        instrumentId: String
+    ) -> Double? {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            genreId: genreId,
+            sceneId: sceneId,
+            purposeId: nil,
+            moodId: moodId,
+            lengthId: lengthId,
+            instrumentId: instrumentId,
+            seed: 1
+        )
+        guard let mapped = try? IntentMapper().map(intent),
+              case .bgm(let recipe) = mapped else { return nil }
+        return Double(recipe.params.tempoBpm)
     }
 
     private func markBGMStructuralDirty() {
@@ -932,10 +1034,80 @@ struct StudioView: View {
         }
     }
 
-    private func applyBGMLoopImmediate() {
-        guard soundType == .bgm, monitor.isPlaying, mapped != nil else { return }
+    private func applyLoopImmediate() {
+        guard monitor.isPlaying, mapped != nil else { return }
         service.setLooping(loopEnabled)
         monitor.setLooping(loopEnabled)
+    }
+
+    private func resetSFXToDefaults() {
+        guard soundType == .sfx else { return }
+        hapticMedium()
+        let wasPlaying = monitor.isPlaying
+        suppressFineTuneReact = true
+        moodId = Catalog.Mood.neutral.rawValue
+        syncSFXSlidersFromMood()
+        if let purpose = Catalog.SFXPurpose(rawValue: purposeId) {
+            sfxDurationMs = Double(purpose.category.defaultDurationMs)
+            lengthId = nearestSFXLengthId(ms: Int(sfxDurationMs.rounded()))
+        }
+        sfxNoteCount = 1
+        Task { @MainActor in suppressFineTuneReact = false }
+        markSFXCatalogDirty()
+        if wasPlaying {
+            playNow(newSeed: false)
+        }
+    }
+
+    private func resetBGMToDefaults() {
+        guard soundType == .bgm else { return }
+        guard let scene = Catalog.BGMScene.resolve(sceneId) else { return }
+
+        let targetMood = scene.defaultMood.rawValue
+        let targetPitch = 0.0
+        let targetRhythm = 0.5
+        let targetMelody = true
+        let targetTempo =
+            bgmSceneDefaultTempo
+            ?? Self.mappedBGMTempo(
+                genreId: genreId,
+                sceneId: scene.rawValue,
+                moodId: targetMood,
+                lengthId: lengthId,
+                instrumentId: instrumentId
+            )
+            ?? bgmTempo
+
+        let alreadyDefault =
+            moodId == targetMood
+            && bgmPitch == targetPitch
+            && bgmRhythm == targetRhythm
+            && bgmMelody == targetMelody
+            && Int(bgmTempo.rounded()) == Int(targetTempo.rounded())
+        guard !alreadyDefault else {
+            hapticMedium()
+            return
+        }
+
+        hapticMedium()
+        let wasPlaying = monitor.isPlaying
+        suppressFineTuneReact = true
+        moodId = targetMood
+        bgmPitch = targetPitch
+        bgmRhythm = targetRhythm
+        bgmMelody = targetMelody
+        bgmTempo = targetTempo
+        bgmSceneDefaultTempo = targetTempo
+        Task { @MainActor in suppressFineTuneReact = false }
+        exportURL = nil
+        fineTuneTask?.cancel()
+        if wasPlaying, mapped != nil, !catalogDirty {
+            fineTuneTask = Task { @MainActor in
+                await reloadBGMFromIntentLive(preservePitchRhythmMelody: false)
+            }
+        } else {
+            catalogDirty = true
+        }
     }
 
     private func applyCurrentBGMParamsToMapped() {
@@ -948,7 +1120,7 @@ struct StudioView: View {
         mapped = .bgm(recipe)
     }
 
-    private func reloadBGMFromIntentLive() async {
+    private func reloadBGMFromIntentLive(preservePitchRhythmMelody: Bool = true) async {
         let intent = currentIntent()
         let savedPitch = bgmPitch
         let savedRhythm = bgmRhythm
@@ -965,10 +1137,16 @@ struct StudioView: View {
             guard !Task.isCancelled else { return }
             mapped = mappedRecipe
             syncFineTuneFromMapped(mappedRecipe)
-            // Keep fine-tune pitch/rhythm/melody across mood-driven remaps.
-            bgmPitch = savedPitch
-            bgmRhythm = savedRhythm
-            bgmMelody = savedMelody
+            if preservePitchRhythmMelody {
+                // Keep fine-tune pitch/rhythm/melody across mood-driven remaps.
+                bgmPitch = savedPitch
+                bgmRhythm = savedRhythm
+                bgmMelody = savedMelody
+            } else {
+                bgmPitch = 0
+                bgmRhythm = 0.5
+                bgmMelody = true
+            }
             applyCurrentBGMParamsToMapped()
             if let mapped {
                 _ = await service.generateMappedAsync(mapped, intent: intent)
@@ -1175,9 +1353,9 @@ struct StudioView: View {
                     _ = service.generate(mapped: mapped, intent: intent)
                 }
             }
-            try service.playLast(loop: loopEnabled && soundType == .bgm)
+            try service.playLast(loop: loopEnabled)
             let duration = mapped?.durationSeconds ?? 1
-            monitor.start(duration: duration, looping: loopEnabled && soundType == .bgm)
+            monitor.start(duration: duration, looping: loopEnabled)
         } catch is CancellationError {
             return
         } catch {
@@ -1233,10 +1411,10 @@ struct StudioView: View {
                     _ = service.generate(mapped: current, intent: intent)
                 }
                 guard !Task.isCancelled else { return }
-                try service.playLast(loop: loopEnabled && soundType == .bgm)
+                try service.playLast(loop: loopEnabled)
                 monitor.start(
                     duration: current.durationSeconds,
-                    looping: loopEnabled && soundType == .bgm
+                    looping: loopEnabled
                 )
             } catch {
                 errorText = error.localizedDescription
@@ -1294,6 +1472,10 @@ struct StudioView: View {
             bgmRhythm = Double(recipe.params.rhythm)
             bgmMelody = recipe.params.melody
             instrumentId = recipe.params.instrumentId
+            if let scene = Catalog.BGMScene.resolve(sceneId),
+               moodId == scene.defaultMood.rawValue {
+                bgmSceneDefaultTempo = Double(recipe.params.tempoBpm)
+            }
         }
     }
 
