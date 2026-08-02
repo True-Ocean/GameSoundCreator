@@ -342,7 +342,12 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertGreaterThan(musicBox.leadTail.ringOut, 1.0)
         XCTAssertGreaterThan(musicBox.leadTail.fmDecay, 0.05)
         XCTAssertGreaterThan(musicBox.chordTail.ringOut, 0.4)
-        XCTAssertFalse(InstrumentPalette.from(instrumentId: "piano").leadTail.isActive)
+        let piano = InstrumentPalette.from(instrumentId: "piano")
+        XCTAssertTrue(piano.pianoVoice)
+        XCTAssertFalse(InstrumentPalette.from(instrumentId: "lead_synth").pianoVoice)
+        XCTAssertEqual(piano.leadOctaveBias, 0)
+        XCTAssertGreaterThan(piano.leadTail.ringOut, 0.5)
+        XCTAssertGreaterThan(piano.filterCutoffScale, 1.0)
 
         let organ = InstrumentPalette.from(instrumentId: "organ")
         XCTAssertTrue(organ.sustainChords)

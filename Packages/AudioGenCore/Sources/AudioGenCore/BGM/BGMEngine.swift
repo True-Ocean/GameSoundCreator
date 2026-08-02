@@ -195,20 +195,34 @@ public struct BGMEngine: Sendable {
                         * instrument.chordDurationScale
                     for (i, midi) in triad.enumerated() {
                         let upperScale = 1 - instrument.chordUpperAtten * Float(i) / Float(max(1, triad.count - 1))
-                        addTone(
-                            &samples,
-                            at: start,
-                            sampleRate: sampleRate,
-                            freq: MusicTheory.freq(midi: midi),
-                            duration: chordDur,
-                            amp: mood.chordAmp * instrument.chordAmpScale * upperScale
-                                * (0.7 + 0.4 * rhythm),
-                            shape: instrument.chordShape,
-                            mute: mute,
-                            envelope: instrument.chordEnv,
-                            fm: instrument.chordFM,
-                            tail: instrument.chordTail
-                        )
+                        let chordAmp = mood.chordAmp * instrument.chordAmpScale * upperScale
+                            * (0.7 + 0.4 * rhythm)
+                        if instrument.pianoVoice {
+                            addPianoTone(
+                                &samples,
+                                at: start,
+                                sampleRate: sampleRate,
+                                freq: MusicTheory.freq(midi: midi),
+                                duration: chordDur,
+                                amp: chordAmp,
+                                ringOut: instrument.chordTail.ringOut,
+                                hammerScale: 0.55
+                            )
+                        } else {
+                            addTone(
+                                &samples,
+                                at: start,
+                                sampleRate: sampleRate,
+                                freq: MusicTheory.freq(midi: midi),
+                                duration: chordDur,
+                                amp: chordAmp,
+                                shape: instrument.chordShape,
+                                mute: mute,
+                                envelope: instrument.chordEnv,
+                                fm: instrument.chordFM,
+                                tail: instrument.chordTail
+                            )
+                        }
                     }
                 }
 
@@ -221,19 +235,35 @@ public struct BGMEngine: Sendable {
                             mode: key.mode
                         )
                         let durSteps = Double(lead.durationSteps)
-                        addTone(
-                            &samples,
-                            at: start,
-                            sampleRate: sampleRate,
-                            freq: MusicTheory.freq(midi: midi),
-                            duration: Double(stepFrames) / sampleRate * durSteps * 0.92 * instrument.leadDurationScale,
-                            amp: mood.leadAmp * instrument.leadAmpScale * lead.velocity,
-                            shape: instrument.leadShape,
-                            mute: mute * 0.7,
-                            envelope: instrument.leadEnv,
-                            fm: instrument.leadFM,
-                            tail: instrument.leadTail
-                        )
+                        let leadDur = Double(stepFrames) / sampleRate * durSteps * 0.92
+                            * instrument.leadDurationScale
+                        let leadAmp = mood.leadAmp * instrument.leadAmpScale * lead.velocity
+                        if instrument.pianoVoice {
+                            addPianoTone(
+                                &samples,
+                                at: start,
+                                sampleRate: sampleRate,
+                                freq: MusicTheory.freq(midi: midi),
+                                duration: leadDur,
+                                amp: leadAmp,
+                                ringOut: instrument.leadTail.ringOut,
+                                hammerScale: 1.0
+                            )
+                        } else {
+                            addTone(
+                                &samples,
+                                at: start,
+                                sampleRate: sampleRate,
+                                freq: MusicTheory.freq(midi: midi),
+                                duration: leadDur,
+                                amp: leadAmp,
+                                shape: instrument.leadShape,
+                                mute: mute * 0.7,
+                                envelope: instrument.leadEnv,
+                                fm: instrument.leadFM,
+                                tail: instrument.leadTail
+                            )
+                        }
                     }
                 }
             }
@@ -337,6 +367,84 @@ public struct BGMEngine: Sendable {
             let env = Float(exp(-t * 70))
             samples[idx] += rng.signedUnit() * env * amp
         }
+    }
+
+    /// Retro piano: hammer click/noise + additive partials with staggered exponential decay.
+    private func addPianoTone(
+        _ samples: inout [Float],
+        at start: Int,
+        sampleRate: Double,
+        freq: Double,
+        duration: Double,
+        amp: Float,
+        ringOut: Double,
+        hammerScale: Float
+    ) {
+        let totalDuration = duration + max(0, ringOut)
+        let length = max(1, Int(totalDuration * sampleRate))
+        // Higher partials die faster — the core of a piano-like envelope.
+        // Mild stretch on upper partials ≈ string inharmonicity (kept subtle for retro clarity).
+        let partials: [(ratio: Double, level: Float, tau: Double)] = [
+            (1.0, 1.00, 0.62),
+            (2.0, 0.48, 0.32),
+            (3.01, 0.22, 0.16),
+            (4.02, 0.10, 0.09),
+            (5.04, 0.04, 0.05),
+        ]
+        var phases = [Double](repeating: 0, count: partials.count)
+        var clickPhase = 0.0
+        let attack = 0.0012
+        let bodyTau = 0.52
+
+        for i in 0..<length {
+            let idx = start + i
+            guard idx < samples.count else { break }
+            let t = Double(i) / sampleRate
+
+            let gate: Float
+            if t < attack {
+                gate = Float(t / max(attack, 0.0001))
+            } else {
+                var level = Float(exp(-(t - attack) / bodyTau))
+                let fadeStart = totalDuration * 0.86
+                if t > fadeStart, totalDuration > fadeStart {
+                    level *= Float(max(0, 1 - (t - fadeStart) / (totalDuration - fadeStart)))
+                }
+                gate = level
+            }
+
+            var body: Float = 0
+            for p in partials.indices {
+                phases[p] += freq * partials[p].ratio / sampleRate
+                let pEnv = Float(exp(-t / partials[p].tau))
+                body += SynthDSP.osc(.sine, phase: phases[p]) * partials[p].level * pEnv
+            }
+            body *= 0.42
+
+            // Hammer: short noise + bright partial burst (key strike).
+            var hammer: Float = 0
+            if t < 0.014 {
+                let hEnv = Float(exp(-t * 220))
+                let noise = hashNoise(start &+ i)
+                clickPhase += min(freq * 7.5, 6_500) / sampleRate
+                let tick = SynthDSP.osc(.sine, phase: clickPhase) * 0.55
+                hammer = (noise * 0.55 + tick) * hEnv * 0.4 * hammerScale
+            }
+
+            samples[idx] += (body + hammer) * gate * amp
+        }
+    }
+
+    /// Deterministic bipolar noise for hammer strikes (seed-stable, no RNG plumbing).
+    private func hashNoise(_ x: Int) -> Float {
+        var v = UInt32(bitPattern: Int32(truncatingIfNeeded: x))
+        v &+= 0x9E37_79B9
+        v ^= v >> 16
+        v &*= 0x85EB_CA6B
+        v ^= v >> 13
+        v &*= 0xC2B2_AE35
+        v ^= v >> 16
+        return Float(Int32(bitPattern: v) & 0x7FFF) / 16_383.5 - 1
     }
 
     private func addTone(

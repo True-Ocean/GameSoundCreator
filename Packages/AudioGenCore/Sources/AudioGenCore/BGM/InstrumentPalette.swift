@@ -59,6 +59,8 @@ struct InstrumentPalette: Sendable {
     var chordTail: ToneTail
     var bassTail: ToneTail
     var leadTail: ToneTail
+    /// When true, lead/chord use the dedicated hammer + partial-decay piano voice.
+    var pianoVoice: Bool
 
     static func from(instrumentId: String) -> InstrumentPalette {
         switch Catalog.Instrument.resolve(instrumentId) {
@@ -93,40 +95,42 @@ struct InstrumentPalette: Sendable {
                 hatAmpScale: 0.85,
                 chordTail: .none,
                 bassTail: .none,
-                leadTail: ToneTail(ringOut: 0.06, fmDecay: 0.16)
+                leadTail: ToneTail(ringOut: 0.06, fmDecay: 0.16),
+                pianoVoice: false
             )
         case .piano:
-            // Plucky FM on lead/chords; balanced band, slightly softer drums.
+            // Dedicated piano voice (hammer + staggered partials). Palette sets mix/register only.
             return InstrumentPalette(
                 chordShape: .triangle,
                 bassShape: .sine,
                 leadShape: .triangle,
-                chordEnv: ADSR(attack: 0.002, decay: 0.22, sustain: 0.12, release: 0.18),
-                bassEnv: ADSR(attack: 0.002, decay: 0.18, sustain: 0.15, release: 0.14),
-                leadEnv: ADSR(attack: 0.001, decay: 0.28, sustain: 0.08, release: 0.2),
-                chordAmpScale: 1.1,
-                bassAmpScale: 0.8,
-                leadAmpScale: 1.2,
-                chordDurationScale: 1.15,
-                bassDurationScale: 1.0,
-                leadDurationScale: 1.25,
-                muteBias: 0.1,
+                chordEnv: ADSR(attack: 0.002, decay: 0.3, sustain: 0.06, release: 0.16),
+                bassEnv: ADSR(attack: 0.003, decay: 0.22, sustain: 0.18, release: 0.14),
+                leadEnv: ADSR(attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.18),
+                chordAmpScale: 0.88,
+                bassAmpScale: 0.95,
+                leadAmpScale: 1.35,
+                chordDurationScale: 0.95,
+                bassDurationScale: 1.05,
+                leadDurationScale: 0.95,
+                muteBias: 0.05,
                 leadOctaveBias: 0,
-                chordOctaveBias: 1,
+                chordOctaveBias: 0,
                 melodyChanceScale: 1.05,
                 sustainChords: false,
-                filterCutoffScale: 1.02,
-                reverbMixBias: 0.06,
-                chordFM: FMTone(ratio: 3.0, index: 0.55),
-                bassFM: FMTone(ratio: 1.0, index: 0.15),
-                leadFM: FMTone(ratio: 3.5, index: 0.85),
-                drumAmpScale: 0.88,
-                chordUpperAtten: 0.15,
+                filterCutoffScale: 1.08,
+                reverbMixBias: 0.1,
+                chordFM: FMTone(ratio: 2.0, index: 0.2),
+                bassFM: FMTone(ratio: 1.0, index: 0.1),
+                leadFM: FMTone(ratio: 2.0, index: 0.3),
+                drumAmpScale: 0.75,
+                chordUpperAtten: 0.35,
                 bassRootHeavy: true,
-                hatAmpScale: 0.9,
-                chordTail: .none,
-                bassTail: .none,
-                leadTail: .none
+                hatAmpScale: 0.7,
+                chordTail: ToneTail(ringOut: 0.5, fmDecay: 0),
+                bassTail: ToneTail(ringOut: 0.2, fmDecay: 0),
+                leadTail: ToneTail(ringOut: 0.75, fmDecay: 0),
+                pianoVoice: true
             )
         case .pad:
             // Chords dominate with slow shimmer FM; quiet lead; soft drums/hats.
@@ -159,7 +163,8 @@ struct InstrumentPalette: Sendable {
                 hatAmpScale: 0.55,
                 chordTail: .none,
                 bassTail: .none,
-                leadTail: .none
+                leadTail: .none,
+                pianoVoice: false
             )
         case .bass:
             // Low end is the star: growly bass FM, thin upper layers, punchy kick.
@@ -192,7 +197,8 @@ struct InstrumentPalette: Sendable {
                 hatAmpScale: 0.75,
                 chordTail: .none,
                 bassTail: .none,
-                leadTail: .none
+                leadTail: .none,
+                pianoVoice: false
             )
         case .musicBox:
             // Clear tine plucks: short gate, long exponential ring; FM dies into pure sine.
@@ -226,7 +232,8 @@ struct InstrumentPalette: Sendable {
                 hatAmpScale: 0.15,
                 chordTail: ToneTail(ringOut: 0.75, fmDecay: 0.12),
                 bassTail: ToneTail(ringOut: 0.3, fmDecay: 0.08),
-                leadTail: ToneTail(ringOut: 1.35, fmDecay: 0.14)
+                leadTail: ToneTail(ringOut: 1.35, fmDecay: 0.14),
+                pianoVoice: false
             )
         case .organ:
             // Sustained church-like bed: slow attack, rich harmonics, soft drums.
@@ -259,7 +266,8 @@ struct InstrumentPalette: Sendable {
                 hatAmpScale: 0.4,
                 chordTail: .none,
                 bassTail: .none,
-                leadTail: .none
+                leadTail: .none,
+                pianoVoice: false
             )
         case .guitar:
             // Bright plucks with mild bite; mid drums; adventure-friendly.
@@ -292,7 +300,8 @@ struct InstrumentPalette: Sendable {
                 hatAmpScale: 0.85,
                 chordTail: .none,
                 bassTail: .none,
-                leadTail: .none
+                leadTail: .none,
+                pianoVoice: false
             )
         }
     }
