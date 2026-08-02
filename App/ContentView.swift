@@ -531,7 +531,7 @@ struct StudioView: View {
 
     /// SFX: all controls on one screen (no modal, no scroll).
     private var sfxStudioBody: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 0) {
             HStack(spacing: 10) {
                 studioValueMenu(
                     accessibilityLabel: "カテゴリ",
@@ -546,15 +546,21 @@ struct StudioView: View {
                 )
             }
 
-            Picker("雰囲気", selection: sfxMoodIdBinding) {
-                ForEach(Catalog.moods) { item in
-                    Text(item.displayName).tag(item.id)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("雰囲気")
+            Spacer(minLength: 12)
+
+            studioPlaybackUnit
+
+            Spacer(minLength: 12)
 
             VStack(spacing: 12) {
+                Picker("雰囲気", selection: sfxMoodIdBinding) {
+                    ForEach(Catalog.moods) { item in
+                        Text(item.displayName).tag(item.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("雰囲気")
+
                 compactSlider("高さ", value: $sfxPitch, range: 0.5...2.0)
                 compactSlider("音色", value: $sfxTimbre, range: 0...1)
                 compactSlider("強さ", value: $sfxIntensity, range: 0...1)
@@ -563,16 +569,6 @@ struct StudioView: View {
 
                 studioResetDefaultsButton(action: resetSFXToDefaults)
             }
-
-            Spacer(minLength: 0)
-
-            studioSectionDivider
-
-            studioToggleRow(title: "ループ", isOn: studioLoopBinding)
-
-            StudioPlaybackProgress(monitor: monitor)
-
-            studioBottomPlaybackControls
         }
     }
 
@@ -621,8 +617,8 @@ struct StudioView: View {
     }
 
     private var bgmStudioBody: some View {
-        VStack(spacing: 16) {
-            // Stops playback when changed.
+        VStack(spacing: 0) {
+            // Catalog: stops playback when changed.
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
                     studioValueMenu(
@@ -638,11 +634,13 @@ struct StudioView: View {
                     )
                 }
 
-                studioValueMenu(
-                    accessibilityLabel: "音色イメージ",
-                    selection: bgmInstrumentIdBinding,
-                    options: Catalog.instruments.map { ($0.id, $0.displayName) }
-                )
+                studioMenuRow(title: "音色イメージ") {
+                    studioInlineValueMenu(
+                        accessibilityLabel: "音色イメージ",
+                        selection: bgmInstrumentIdBinding,
+                        options: Catalog.instruments.map { ($0.id, $0.displayName) }
+                    )
+                }
 
                 Picker("長さ", selection: bgmLengthIdBinding) {
                     ForEach(Catalog.bgmLengths) { item in
@@ -653,9 +651,13 @@ struct StudioView: View {
                 .accessibilityLabel("長さ")
             }
 
-            studioSectionDivider
+            Spacer(minLength: 12)
 
-            // Keeps playing; regenerates in the background.
+            studioPlaybackUnit
+
+            Spacer(minLength: 12)
+
+            // Fine-tune: keeps playing; regenerates in the background.
             VStack(spacing: 10) {
                 Picker("雰囲気", selection: bgmMoodIdBinding) {
                     ForEach(Catalog.moods) { item in
@@ -675,21 +677,16 @@ struct StudioView: View {
 
                 studioResetDefaultsButton(action: resetBGMToDefaults)
             }
+        }
+    }
 
-            Spacer(minLength: 0)
-
-            studioSectionDivider
-
+    /// Loop / progress / play / pattern — primary actions after catalog selection.
+    private var studioPlaybackUnit: some View {
+        VStack(spacing: 10) {
             studioToggleRow(title: "ループ", isOn: studioLoopBinding)
 
             StudioPlaybackProgress(monitor: monitor)
 
-            studioBottomPlaybackControls
-        }
-    }
-
-    private var studioBottomPlaybackControls: some View {
-        VStack(spacing: 10) {
             HStack(spacing: 10) {
                 playControlButton
                 patternControlButton
@@ -699,6 +696,28 @@ struct StudioView: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(theme.secondaryText)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(theme.panel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(theme.accent.opacity(0.35), lineWidth: 1)
+        }
+    }
+
+    private func studioMenuRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 12)
+            content()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     /// Value-only menu chrome: selected title on one centered line (role via accessibility).
@@ -706,6 +725,25 @@ struct StudioView: View {
         accessibilityLabel: String,
         selection: Binding<String>,
         options: [(id: String, title: String)]
+    ) -> some View {
+        studioInlineValueMenu(
+            accessibilityLabel: accessibilityLabel,
+            selection: selection,
+            options: options,
+            centered: true
+        )
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// Menu control showing the selected title (optionally centered) with a chevron.
+    private func studioInlineValueMenu(
+        accessibilityLabel: String,
+        selection: Binding<String>,
+        options: [(id: String, title: String)],
+        centered: Bool = false
     ) -> some View {
         let title = options.first(where: { $0.id == selection.wrappedValue })?.title ?? accessibilityLabel
         return Menu {
@@ -718,7 +756,7 @@ struct StudioView: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Spacer(minLength: 0)
+                if centered { Spacer(minLength: 0) }
                 Text(title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -726,16 +764,12 @@ struct StudioView: View {
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2.weight(.semibold))
                     .layoutPriority(1)
-                Spacer(minLength: 0)
+                if centered { Spacer(minLength: 0) }
             }
             .foregroundStyle(theme.accent)
         }
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(title)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func studioResetDefaultsButton(action: @escaping () -> Void) -> some View {
@@ -750,37 +784,29 @@ struct StudioView: View {
         .disabled(isBusy)
     }
 
-    private var studioSectionDivider: some View {
-        Rectangle()
-            .fill(theme.secondaryText.opacity(0.45))
-            .frame(height: 1)
-            .padding(.horizontal, 2)
-    }
-
     private func studioToggleRow(title: String, isOn: Binding<Bool>) -> some View {
         HStack(spacing: 10) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(theme.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .frame(width: 56, alignment: .leading)
+            studioParamLabel(title)
             Spacer(minLength: 0)
-            Toggle(title, isOn: isOn)
-                .labelsHidden()
-                .controlSize(.small)
+            Toggle(isOn: isOn) {
+                EmptyView()
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .font(.subheadline)
         }
+        .frame(minHeight: 32)
     }
 
     // MARK: Catalog bindings
-    // BGM UI order mirrors behavior:
-    //   カテゴリ／用途／音色イメージ／長さ → 停止して再生待ち
-    //   雰囲気・テンポ／ピッチ／リズム・メロディ → 再生中は旧音継続のまま再生成し切替
-    //   ループ → 再生位置を保ったまま即反映
-    // SFX: カテゴリ／用途／雰囲気 → 停止して再生待ち
-    //   スライダー → 次回再生時に反映
+    // Studio layout (BGM / SE):
+    //   カタログ選択 → 再生操作ユニット（ループ／バー／再生／別パターン）→ 微調整
+    // BGM catalog: カテゴリ／用途／音色イメージ／長さ → 停止して再生待ち
+    // BGM fine-tune: 雰囲気・テンポ／ピッチ／リズム・メロディ → 再生中は裏生成して切替
+    // SFX catalog: カテゴリ／用途 → 停止して再生待ち
+    // SFX fine-tune: 雰囲気・スライダー → 次回再生時に反映
+    //   設定リセット → 雰囲気・スライダー等を用途既定へ戻す
     //   ループ → 再生中は即反映
-    //   設定リセット → 雰囲気・スライダー・長さ・音数を初期化
 
     private var bgmSceneGroupBinding: Binding<String> {
         Binding(
@@ -919,12 +945,7 @@ struct StudioView: View {
         step: Double? = nil
     ) -> some View {
         HStack(spacing: 10) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(theme.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .frame(width: 56, alignment: .leading)
+            studioParamLabel(title)
             if let step {
                 Slider(value: value, in: range, step: step)
             } else {
@@ -935,6 +956,16 @@ struct StudioView: View {
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: 44, alignment: .trailing)
         }
+        .frame(minHeight: 32)
+    }
+
+    private func studioParamLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.regular))
+            .foregroundStyle(theme.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(width: 56, alignment: .leading)
     }
 
     // MARK: Catalog dirty helpers
