@@ -255,6 +255,8 @@ public enum MelodyComposer {
     ) -> [MotifEvent] {
         var motifEvents: [MotifEvent] = []
         var contourIndex = 0
+        var previousRel: Int?
+        var pendingLeapDirection: Int? // +1 / -1; next note steps back
         for barOffset in 0..<motifBars {
             for (index, hit) in rhythm.enumerated() {
                 let isAnchor = barOffset == 0 && index == 0
@@ -270,7 +272,28 @@ public enum MelodyComposer {
                 let strong = hit.step % 4 == 0
                 // Anchor already chose a chord-tone family; keep it. Soft-snap others.
                 let snapped = isAnchor ? relRaw : preferChordTone(relRaw, strongBeat: strong, mood: mood)
-                let rel = sanitizeRelative(snapped, mood: mood)
+                var rel = sanitizeRelative(snapped, mood: mood)
+
+                // Step 3: singable motion — step limits, leap recovery.
+                if let prev = previousRel {
+                    if let leapDir = pendingLeapDirection {
+                        rel = sanitizeRelative(prev - leapDir, mood: mood)
+                        pendingLeapDirection = nil
+                    } else {
+                        let stepped = constrainMelodicStep(
+                            from: prev,
+                            toward: rel,
+                            mood: mood,
+                            rng: &rng
+                        )
+                        rel = sanitizeRelative(stepped, mood: mood)
+                        let delta = rel - prev
+                        if abs(delta) >= 3 {
+                            pendingLeapDirection = delta > 0 ? 1 : -1
+                        }
+                    }
+                }
+
                 let velocity: Float
                 if index == 0 {
                     velocity = 1.0
@@ -289,6 +312,7 @@ public enum MelodyComposer {
                         velocity: velocity
                     )
                 )
+                previousRel = rel
             }
         }
         if motifEvents.isEmpty, let first = rhythm.first {
@@ -296,7 +320,57 @@ public enum MelodyComposer {
                 MotifEvent(barOffset: 0, step: first.step, duration: first.duration, rel: startDegree, velocity: 1)
             )
         }
+        // Phrase ending prefers a stable tone (root / third).
+        if motifEvents.count >= 2, var last = motifEvents.last {
+            last.rel = stablePhraseEnding(last.rel, mood: mood)
+            motifEvents[motifEvents.count - 1] = last
+        }
         return motifEvents
+    }
+
+    /// Soft step limit so contours stay singable; mood controls how often leaps pass.
+    private static func constrainMelodicStep(
+        from previous: Int,
+        toward target: Int,
+        mood: Catalog.Mood,
+        rng: inout SeededGenerator
+    ) -> Int {
+        let maxStep: Int
+        let leapChance: Float
+        switch mood {
+        case .bright:
+            maxStep = 2
+            leapChance = 0.08
+        case .neutral:
+            maxStep = 2
+            leapChance = 0.14
+        case .dark:
+            maxStep = 2
+            leapChance = 0.12
+        case .tense:
+            maxStep = 3
+            leapChance = 0.32
+        }
+        let delta = target - previous
+        if abs(delta) <= maxStep { return target }
+        if rng.unit() < leapChance {
+            // Occasional expressive leap (resolved on the next note).
+            return target
+        }
+        return previous + (delta > 0 ? maxStep : -maxStep)
+    }
+
+    private static func stablePhraseEnding(_ relative: Int, mood: Catalog.Mood) -> Int {
+        let stables: [Int]
+        switch mood {
+        case .bright, .neutral:
+            stables = [0, 2, 4]
+        case .dark:
+            stables = [0, 2, -3]
+        case .tense:
+            stables = [0, 2, 5]
+        }
+        return stables.min(by: { abs($0 - relative) < abs($1 - relative) }) ?? 0
     }
 
     // MARK: - Rhythm / contour libraries

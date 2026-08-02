@@ -640,6 +640,14 @@ struct StudioView: View {
             .pickerStyle(.segmented)
             .accessibilityLabel("長さ")
 
+            VStack(spacing: 12) {
+                compactSlider("テンポ", value: $bgmTempo, range: 80...160, step: 1)
+                compactSlider("ピッチ", value: $bgmPitch, range: -6...6, step: 1)
+                compactSlider("リズム", value: $bgmRhythm, range: 0...1)
+            }
+
+            Spacer(minLength: 0)
+
             HStack {
                 HStack(spacing: 8) {
                     Text("ループ")
@@ -656,15 +664,6 @@ struct StudioView: View {
                 }
             }
 
-            VStack(spacing: 12) {
-                compactSlider("テンポ", value: $bgmTempo, range: 80...160, step: 1)
-                compactSlider("ピッチ", value: $bgmPitch, range: -6...6, step: 1)
-                compactSlider("リズム", value: $bgmRhythm, range: 0...1)
-            }
-
-            Spacer(minLength: 0)
-
-            // 微調整の下・再生／別パターンの上
             StudioPlaybackProgress(monitor: monitor)
 
             studioBottomPlaybackControls

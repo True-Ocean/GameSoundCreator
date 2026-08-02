@@ -692,6 +692,74 @@ final class AudioGenCoreTests: XCTestCase {
         )
     }
 
+    func testBrightMelodyPrefersStepwiseMotion() {
+        let progression = [0, 0, 0, 0]
+        var intervals = 0
+        var wideLeaps = 0
+        for seed in 1...36 {
+            let plan = MelodyComposer.compose(
+                bars: 4,
+                progression: progression,
+                density: 0.7,
+                moodId: "bright",
+                melodyEnabled: true,
+                melodyChanceScale: 1.0,
+                seed: UInt64(seed)
+            )
+            let degrees = plan.notes
+                .sorted { ($0.bar, $0.step) < ($1.bar, $1.step) }
+                .map(\.degree)
+            guard degrees.count >= 2 else { continue }
+            for index in 1..<degrees.count {
+                let span = abs(degrees[index] - degrees[index - 1])
+                intervals += 1
+                if span >= 4 { wideLeaps += 1 }
+            }
+        }
+        XCTAssertGreaterThan(intervals, 20)
+        XCTAssertLessThan(
+            Double(wideLeaps) / Double(intervals),
+            0.22,
+            "bright mood should keep most motion stepwise"
+        )
+    }
+
+    func testMelodicLeapTendsToResolveOpposite() {
+        let progression = [0, 0, 0, 0]
+        var leapCases = 0
+        var resolved = 0
+        for seed in 1...48 {
+            let plan = MelodyComposer.compose(
+                bars: 4,
+                progression: progression,
+                density: 0.75,
+                moodId: "tense",
+                melodyEnabled: true,
+                melodyChanceScale: 1.15,
+                seed: UInt64(seed)
+            )
+            let degrees = plan.notes
+                .sorted { ($0.bar, $0.step) < ($1.bar, $1.step) }
+                .map(\.degree)
+            guard degrees.count >= 3 else { continue }
+            for index in 1..<(degrees.count - 1) {
+                let leap = degrees[index] - degrees[index - 1]
+                guard abs(leap) >= 3 else { continue }
+                leapCases += 1
+                let recovery = degrees[index + 1] - degrees[index]
+                // Recovery steps back toward the pre-leap note.
+                if leap > 0, recovery < 0 { resolved += 1 }
+                if leap < 0, recovery > 0 { resolved += 1 }
+            }
+        }
+        XCTAssertGreaterThan(leapCases, 3, "expected some leaps in tense motifs")
+        XCTAssertGreaterThanOrEqual(
+            resolved * 2,
+            leapCases,
+            "most leaps should be followed by opposite motion"
+        )
+    }
+
     func testDarkMoodClampsSoaringRelatives() {
         let progression = [0, 4, 5, 3]
         for seed in 1...24 {
