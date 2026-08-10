@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |------|------|
-| 文書バージョン | 2.1 |
-| 最終更新 | 2026-08-02 |
-| ステータス | 実装中（Phase 3.5 音色・メロディ整備済み／Phase 4 準備） |
+| 文書バージョン | 2.5 |
+| 最終更新 | 2026-08-10 |
+| ステータス | 実装中（Phase 3.5 音色・メロディ整備済み／Phase 4 準備、App Store 提出前の仕上げは未着手） |
 | 対象プラットフォーム | iOS（初期）。表示名「レトロサウンド」。将来 macOS / 他は検討 |
 
 ---
@@ -95,7 +95,7 @@
 | F-08 | 完全オフライン動作 | Must |
 | F-09 | カタログ: BGM用途（画面／プレイ中／結果）＋SE用途。`genreId` は内部既定 | Must |
 | F-10 | 制作画面で試聴・別パターン・保存・書き出し・微調整まで完結 | Must |
-| F-11 | Intent / Recipe のお気に入り保存 | Should（MVP後期可） |
+| F-11 | Intent（seedを含む）のライブラリ保存と再生成。書き出し済みファイル名は補助情報として保持 | Must |
 | F-12 | BGM微調整: テンポ／ピッチ／リズム。SE微調整: 高さ／音色／強さ／長さ／音数 | Must |
 
 ### 3.2 追加（v1.x）
@@ -138,6 +138,7 @@ Intent は、ユーザーが UI 上で選んだ**制作意図**のまとまり�
 | `purposeId` | String | SE時○ | SE の UI／アクション用途 |
 | `moodId` | String | ○ | 雰囲気（既定値可） |
 | `lengthId` | String | ○ | 長さプリセット（既定値可） |
+| `instrumentId` | String? | BGM時— | BGMの音色イメージ。未指定時は用途の既定音色を使う |
 | `seed` | UInt64? | — | 未指定なら生成時に抽選 |
 
 BGM では `sceneId` を使い `purposeId` は空。SE では `purposeId` を使い `sceneId` は空（または用途から暗示されるシーンを内部保持してもよい）。
@@ -152,6 +153,7 @@ BGM では `sceneId` を使い `purposeId` は空。SE では `purposeId` を使
   "sceneId": "battle_normal",
   "moodId": "tense",
   "lengthId": "sec_30",
+  "instrumentId": "lead_synth",
   "seed": 42
 }
 ```
@@ -325,10 +327,7 @@ BGM は **使う場所 → 用途** の2階層で UI に出す（効果音のカ
 | `neutral` | ふつう | 既定テンプレ |
 | `tense` | 緊張 | 短調寄り、energy 高め、密度増 |
 | `dark` | 暗い | 短調、ローパス、低域強調 |
-| `epic` | 壮大 | 同時発音・低域・ファンファーレ要素 |
-| `playful` | 軽快 | 高BPM寄り、短い音符、明るいSE |
-
-MVP では UI 上 **3〜5 択**（例: 明るい / ふつう / 緊張 / 暗い）に絞り、他は v1 で追加してよい。
+MVP のUI・実装ともに **4択**（明るい / ふつう / 緊張 / 暗い）である。`epic` や `playful` を追加する場合は、Catalog・Mapper・UI・テストを同時に拡張する。
 
 ### 4.7 長さ（`lengthId`）
 
@@ -394,7 +393,7 @@ MVP では UI 上 **3〜5 択**（例: 明るい / ふつう / 緊張 / 暗い�
 | `intensity` | Float | 0–1 | 強さ・歪み・音量エンベロープ |
 | `variation` | Int | 0–7 | 同一カテゴリ内の型違い |
 
-出力: モノラルまたはステレオ、サンプルレート **44100 Hz** または **48000 Hz**（アプリ設定で固定、初期は 44100）。
+出力: モノラル、サンプルレート **44100 Hz**（現行実装で固定）。
 
 ---
 
@@ -581,7 +580,7 @@ Intent の `instrumentId` を Mapper 経由で Recipe に渡す。用途未指�
 
 ### 7.2 レシピ（Recipe）形式
 
-生成エンジンへの入力はすべてシリアライズ可能な **Recipe** とする（JSON）。Intent を保存する場合は、可能なら **Intent と解決済み Recipe の両方**（または Intent＋seed のみ）を残し、カタログ更新後の再現方針をバージョンで管理する。
+生成エンジンへの入力はすべてシリアライズ可能な **Recipe** とする（JSON）。現行ライブラリは **Intent＋seed** と任意の書き出しファイル名を保存し、再生時に再マップ・再生成する。解決済みRecipeの保存は将来の再現性強化として検討し、導入時はカタログ更新との互換方針をバージョンで管理する。
 
 目的:
 
@@ -614,8 +613,8 @@ Intent の `instrumentId` を Mapper 経由で Recipe に渡す。用途未指�
 ### 7.3 モジュール境界（推奨ディレクトリ）
 
 ```
-App/                      … SwiftUI（ウィザード・結果・ライブラリ）
-Sources/AudioGenCore      … 生成エンジン（Swift Package）
+App/                                      … SwiftUI（ウィザード・結果・ライブラリ）
+Packages/AudioGenCore/Sources/AudioGenCore … 生成エンジン（Swift Package）
   Intent/                 … Intent モデル、Catalog、Mapper
   SFX/
   BGM/
@@ -772,7 +771,7 @@ Sources/AudioGenCore      … 生成エンジン（Swift Package）
 
 ### 11.2 初期イベント一覧（カードバトル想定）
 
-UI/SE: `ui_tap`, `ui_confirm`, `card_draw`, `attack_light`, `attack_heavy`, `attack_slash`, `attack_bow`, `magic_ice`, `magic_beam`, `fanfare_shine`, `fanfare_sting`, `victory`, `defeat` など（用途はカテゴリ→用途の2階層。詳細は §4.5）
+UI/SE: `ui_tap`, `ui_confirm`, `card_draw`, `attack_light`, `attack_heavy`, `attack_slash`, `attack_bow`, `magic_ice`, `magic_beam`, `fanfare_correct`, `fanfare_sting`, `victory`, `defeat` など（用途はカテゴリ→用途の2階層。詳細は §4.5）
 
 BGM: `menu_main`, `battle_normal`（＋可能なら `result_win` / `result_lose`）
 
@@ -784,11 +783,11 @@ BGM: `menu_main`, `battle_normal`（＋可能なら `result_win` / `result_lose`
 
 | 層 | 技術 |
 |----|------|
-| 言語 | Swift 5.x / 6.x（プロジェクト作成時の Xcode 既定に合わせる） |
+| 言語 | Swift 5 言語モード（Xcode 26.6 / Swift 6.3.3 ツールチェーンでビルド） |
 | UI | SwiftUI |
 | 音声再生・グラフ | AVFoundation / AVAudioEngine |
 | 書き出し | AVAudioFile |
-| 永続化 | SwiftData または JSON ファイル（MVP は JSON で可） |
+| 永続化 | JSON ファイル（Documents 内 `library.json`）。SwiftData は未導入 |
 | 課金 | StoreKit 2 |
 | 広告（入れる場合） | Google AdMob 等（導入は収益化フェーズ） |
 | パッケージ管理 | Swift Package Manager |
@@ -875,3 +874,4 @@ BGM: `menu_main`, `battle_normal`（＋可能なら `result_win` / `result_lose`
 | 2.2 | 2026-08-02 | SEカタログ再編: ダブルタップ削除、結果→ファンファーレ、弓/嵐/ビーム/キラーン等追加。氷は凍りつき、強攻撃と叩くを差別化 |
 | 2.3 | 2026-08-02 | 斬るをズバッ系に、弓を放ち→飛行→刺突の3段に。2段攻撃は廃止（音数で代替） |
 | 2.4 | 2026-08-02 | 動作にジャンプ等追加。キラーン／キュピーン削除。ルーレット／カウントダウンは試用後に削除 |
+| 2.5 | 2026-08-10 | 現行コードに合わせ、Intentの音色項目、雰囲気4択、44.1 kHz、ライブラリ保存方式、実在するカタログIDとモジュールパスを更新 |

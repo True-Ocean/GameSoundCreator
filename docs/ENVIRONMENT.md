@@ -5,8 +5,9 @@ GameSoundCreator（Swift / iOS）を始めるための環境構築手順です�
 
 | 項目 | 内容 |
 |------|------|
-| 最終更新 | 2026-07-26 |
-| 対象マシン（作成時） | Apple Silicon Mac、macOS 26.x、Homebrew あり、**Xcode 未インストール** |
+| 文書バージョン | 0.2 |
+| 最終更新 | 2026-08-10 |
+| 確認済み環境 | Apple Silicon Mac、macOS 26.x、Xcode 26.6（Build 17F113）、Swift 6.3.3 ツールチェーン |
 
 ---
 
@@ -32,7 +33,7 @@ GameSoundCreator（Swift / iOS）を始めるための環境構築手順です�
 
 重要:
 
-- **Cursor だけでは iPhone アプリをビルド／実行できない**（いまのところ）
+- **iPhone アプリのビルド・署名・実機／シミュレータ実行には Xcode のツールチェーンが必要**
 - **Xcode は必須**。App Store から入れる大きな開発ツールです
 - 日常は「Cursor で編集 → Xcode で Run」または「両方で同じフォルダを開く」 Dual 運用が一般的です
 
@@ -48,8 +49,8 @@ GameSoundCreator（Swift / iOS）を始めるための環境構築手順です�
 | macOS | あり（26.x） | OK |
 | 空き容量 | 十分（目安 40GB 以上あると安心） | Xcode は大きい |
 | Homebrew | あり | 任意ツールのインストールに使える |
-| Command Line Tools + Swift | あり | ターミナルで `swift` は動くが **iOSアプリ用ではない** |
-| **Xcode.app** | **なし ← 最優先で入れる** | シミュレータ・iOS SDK・Interface がここに入る |
+| Command Line Tools + Swift | あり | コマンドライン確認に使える。iOS SDK は Xcode 側を使う |
+| **Xcode.app** | **導入済み（26.6）** | シミュレータ・iOS SDK・実機署名に使用 |
 | Apple Developer 有料会員 | まだ不要 | 実機の簡易テストは無料 Apple ID で可能なことが多い。**Store 公開時に有料が必要** |
 
 ---
@@ -62,7 +63,7 @@ GameSoundCreator（Swift / iOS）を始めるための環境構築手順です�
 4. （推奨）iPhone を用意し、ケーブル接続できる状態にする  
 5. Cursor でこのリポジトリを開き続けられることを確認する  
 6. Apple ID を Xcode にサインインする（無料で可）  
-7. 動作確認用の「Hello」アプリを1つ作って Run する  
+7. このリポジトリのアプリを Run する
 
 **今は不要なもの:** Node、Vite、Python 仮想環境、Docker、Android Studio、有料の Apple Developer（公開まで）。
 
@@ -114,28 +115,23 @@ Build version ...
 
 ---
 
-## 5. Step 3 — 最初の「Hello」で動作確認（超重要）
+## 5. Step 3 — このプロジェクトで Run 確認（重要）
 
-本リポジトリの本実装の前に、**空のサンプルアプリが Run できること**を確認します。
+すでに `GameSoundCreator.xcodeproj` があるため、空のサンプルを作る必要はありません。実アプリを起動して環境と署名を確認します。
 
-1. Xcode を開く → **Create New Project**  
-2. **iOS** → **App** → Next  
-3. 例:  
-   - Product Name: `HelloSound`  
-   - Interface: **SwiftUI**  
-   - Language: **Swift**  
-   - Storage: None で可  
-4. 保存場所は `Desktop` など一時でOK（GameSoundCreator とは別でよい）  
-5. 画面上のデバイス選択で **iPhone 16** などシミュレータを選ぶ  
-6. ▶（Run）を押す  
+1. `GameSoundCreator.xcodeproj` を Xcode で開く
+2. 画面上部の実行先で iOS シミュレータまたは接続した iPhone を選ぶ
+3. 初回は **Signing & Capabilities** の Team を選択する
+4. ▶（Run）を押す
+5. ホーム画面から BGM または効果音を生成・試聴できることを確認する
 
-シミュレータが起動し、「Hello, world!」系の画面が出れば **環境OK** です。
+アプリが起動すれば **環境OK** です。音のレイテンシやスピーカーでの聴感は必ず実機でも確認してください。
 
 うまくいかないとき:
 
 | 症状 | 確認 |
 |------|------|
-| Run がグレー／失敗 | Platforms に iOS が入っているか |
+| Run がグレー／失敗 | 実行先の iOS Runtime とプロジェクトの Scheme を確認 |
 | Signing エラー | 次の Step（Apple ID）へ |
 | シミュレータが真っ黒 | 初回は待つ。だめなら別機種のシミュレータを試す |
 
@@ -216,13 +212,13 @@ Cursor Pro のままで問題ありません。**追加で「Cursor 用の特別
 
 全部にチェックが付いたら、環境は整っています。
 
-- [ ] `/Applications/Xcode.app` がある  
-- [ ] `xcodebuild -version` が Xcode の版を表示する  
-- [ ] Xcode が起動し、追加コンポーネントの導入が終わっている  
-- [ ] 空の SwiftUI アプリがシミュレータで Run できる  
-- [ ] Xcode Accounts に Apple ID が入っている  
-- [ ] （推奨）実機 iPhone でも一度 Run できた  
-- [ ] Cursor で本リポジトリが開ける  
+- [x] `/Applications/Xcode.app` がある
+- [x] `xcodebuild -version` が Xcode の版を表示する
+- [x] Xcode が起動し、追加コンポーネントの導入が終わっている
+- [x] GameSoundCreator がシミュレータまたは実機で Run できる
+- [x] Xcode Accounts に Apple ID が入っている
+- [x] 実機 iPhone でも Run できた
+- [x] Cursor で本リポジトリが開ける
 
 確認コマンド:
 
@@ -235,14 +231,13 @@ swift --version
 
 ---
 
-## 11. 次にやること（環境が整ったら）
+## 11. 次にやること
 
-Phase 0 のプロジェクトはリポジトリに作成済みです。
+環境構築とアプリの基本機能は完了しています。次の実装優先度はロードマップに従います。
 
-1. `GameSoundCreator.xcodeproj` を Xcode で開く  
-2. Team を選んでシミュレータまたは実機で Run  
-3. サイン波の再生と WAV 書き出しを確認  
-4. 問題なければ Phase 1（効果音エンジン）へ  
+1. Phase 4 として、自作ゲームへ書き出した音を仮配置して聴感を評価する
+2. App Store 提出を進める場合は、[APP_STORE.md](APP_STORE.md) の公開準備チェックリストを使う
+3. 日常のコード変更後は、Xcode でシミュレータ確認、音やファイル操作の変更後は実機確認を行う
 
 詳細は [ROADMAP.md](ROADMAP.md) を参照。
 
