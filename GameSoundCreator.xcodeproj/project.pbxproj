@@ -20,6 +20,7 @@
 		A1000000000000000000000C /* StudioOperationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* StudioOperationState.swift */; };
 		A1000000000000000000000D /* StudioGenerationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* StudioGenerationState.swift */; };
 		A1000000000000000000000E /* StudioGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* StudioGenerationViewModel.swift */; };
+		A1000000000000000000000F /* LibraryPlaybackViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* LibraryPlaybackViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,7 @@
 		A2000000000000000000000C /* StudioOperationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioOperationState.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* StudioGenerationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioGenerationState.swift; sourceTree = "<group>"; };
 		A2000000000000000000000E /* StudioGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioGenerationViewModel.swift; sourceTree = "<group>"; };
+		A2000000000000000000000F /* LibraryPlaybackViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPlaybackViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +72,7 @@
 				A2000000000000000000000C /* StudioOperationState.swift */,
 				A2000000000000000000000D /* StudioGenerationState.swift */,
 				A2000000000000000000000E /* StudioGenerationViewModel.swift */,
+				A2000000000000000000000F /* LibraryPlaybackViewModel.swift */,
 				A20000000000000000000007 /* LegacyStudioView.swift */,
 				A2000000000000000000000A /* LaunchScreen.storyboard */,
 				A20000000000000000000003 /* Assets.xcassets */,
@@ -172,6 +175,7 @@
 				A1000000000000000000000C /* StudioOperationState.swift in Sources */,
 				A1000000000000000000000D /* StudioGenerationState.swift in Sources */,
 				A1000000000000000000000E /* StudioGenerationViewModel.swift in Sources */,
+				A1000000000000000000000F /* LibraryPlaybackViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

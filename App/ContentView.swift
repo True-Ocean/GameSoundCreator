@@ -1596,8 +1596,7 @@ struct LibraryView: View {
     @Environment(\.appTheme) private var theme
     @ObservedObject private var library = LibraryStore.shared
     @State private var sort: LibrarySort = .newest
-    @State private var playingId: UUID?
-    @State private var isBusy = false
+    @State private var playbackViewModel = LibraryPlaybackViewModel()
     @State private var errorText: String?
     @State private var showError = false
     /// Explicit delete mode (system EditMode conflicts with play + NavigationLink rows).
@@ -1659,8 +1658,7 @@ struct LibraryView: View {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             isDeleting.toggle()
                             if isDeleting {
-                                service.stop()
-                                playingId = nil
+                                playbackViewModel.stop()
                             }
                         }
                     }
@@ -1692,11 +1690,10 @@ struct LibraryView: View {
             for: AudioPlaybackNotification.stopped,
             object: service
         )) { _ in
-            playingId = nil
+            playbackViewModel.handleSystemStop()
         }
         .onDisappear {
-            service.stop()
-            playingId = nil
+            playbackViewModel.stop()
             isDeleting = false
         }
         .onChange(of: library.entries.isEmpty) { _, empty in
@@ -1728,13 +1725,13 @@ struct LibraryView: View {
                     hapticMedium()
                     togglePlayback(entry)
                 } label: {
-                    Image(systemName: playingId == entry.id ? "stop.circle.fill" : "play.circle.fill")
+                    Image(systemName: playbackViewModel.isPlaying(entry) ? "stop.circle.fill" : "play.circle.fill")
                         .font(.title2)
                         .foregroundStyle(theme.accent)
                 }
                 .buttonStyle(.plain)
-                .disabled(isBusy)
-                .accessibilityLabel(playingId == entry.id ? "停止" : "再生")
+                .disabled(playbackViewModel.isBusy)
+                .accessibilityLabel(playbackViewModel.isPlaying(entry) ? "停止" : "再生")
             }
 
             if isDeleting {
@@ -1753,7 +1750,10 @@ struct LibraryView: View {
                 Button {
                     togglePlayback(entry)
                 } label: {
-                    Label(playingId == entry.id ? "停止" : "再生", systemImage: playingId == entry.id ? "stop.fill" : "play.fill")
+                    Label(
+                        playbackViewModel.isPlaying(entry) ? "停止" : "再生",
+                        systemImage: playbackViewModel.isPlaying(entry) ? "stop.fill" : "play.fill"
+                    )
                 }
             }
             Button(role: .destructive) {
@@ -1800,9 +1800,8 @@ struct LibraryView: View {
     }
 
     private func remove(_ entry: LibraryEntry) {
-        if playingId == entry.id {
-            service.stop()
-            playingId = nil
+        if playbackViewModel.isPlaying(entry) {
+            playbackViewModel.stop()
         }
         do {
             try library.remove(entry)
@@ -1817,17 +1816,7 @@ struct LibraryView: View {
     }
 
     private func togglePlayback(_ entry: LibraryEntry) {
-        if playingId == entry.id {
-            service.stop()
-            playingId = nil
-            return
-        }
-        isBusy = true
-        defer { isBusy = false }
-        do {
-            try service.play(entry.intent, loop: entry.intent.soundType == .bgm)
-            playingId = entry.id
-        } catch {
+        playbackViewModel.toggle(entry) { error in
             errorText = error.localizedDescription
             showError = true
         }
