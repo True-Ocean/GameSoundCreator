@@ -272,23 +272,20 @@ struct StudioView: View {
     @State private var instrumentId = Catalog.Instrument.leadSynth.rawValue
     @State private var seed: UInt64 = UInt64.random(in: 1...999_999)
 
-    @State private var mapped: MappedRecipe?
-    @State private var catalogDirty = true
+    @State private var generationState = StudioGenerationState()
+    @State private var generationViewModel = StudioGenerationViewModel()
     @State private var loopEnabled = true
     @State private var errorText: String?
     @State private var showError = false
     @State private var toast: String?
-    @State private var exportURL: URL?
     @State private var showShareSheet = false
-    @State private var isBusy = false
-    @State private var activeBusyOperationID: UUID?
+    @State private var operationState = StudioOperationState()
     @State private var didAppear = false
     @State private var patternFlash = false
     @State private var suppressFineTuneReact = false
     @State private var fineTuneTask: Task<Void, Never>?
     @State private var playTask: Task<Void, Never>?
     @State private var exportTask: Task<Void, Never>?
-    @State private var showGeneratingOverlay = false
 
     @State private var monitor = PlaybackMonitor()
     @State private var library = LibraryStore.shared
@@ -306,6 +303,21 @@ struct StudioView: View {
     @State private var bgmSceneDefaultTempo: Double?
 
     private var service: GenerationService { GenerationService.shared }
+
+    private var mapped: MappedRecipe? {
+        get { generationState.mapped }
+        nonmutating set { generationState.mapped = newValue }
+    }
+
+    private var catalogDirty: Bool {
+        get { generationState.catalogDirty }
+        nonmutating set { generationState.catalogDirty = newValue }
+    }
+
+    private var exportURL: URL? {
+        get { generationState.exportURL }
+        nonmutating set { generationState.exportURL = newValue }
+    }
 
     private var titleText: String {
         soundType == .bgm ? "BGMスタジオ" : "効果音スタジオ"
@@ -406,7 +418,7 @@ struct StudioView: View {
                 }
             }
             .overlay { generatingOverlay }
-            .animation(.easeOut(duration: 0.15), value: showGeneratingOverlay)
+            .animation(.easeOut(duration: 0.15), value: operationState.showsGeneratingOverlay)
     }
 
     @ViewBuilder
@@ -435,7 +447,7 @@ struct StudioView: View {
             } label: {
                 Image(systemName: "square.and.arrow.up")
             }
-            .disabled(isBusy)
+            .disabled(operationState.isBusy)
             .accessibilityLabel("共有")
         }
     }
@@ -455,7 +467,7 @@ struct StudioView: View {
 
     @ViewBuilder
     private var generatingOverlay: some View {
-        if showGeneratingOverlay {
+        if operationState.showsGeneratingOverlay {
             ZStack {
                 Color.black.opacity(0.4)
                     .ignoresSafeArea()
@@ -534,7 +546,7 @@ struct StudioView: View {
         fineTuneTask?.cancel()
         playTask?.cancel()
         exportTask?.cancel()
-        cancelBusyOperation()
+        operationState.cancel()
         service.stop()
         monitor.stopMonitoring()
     }
@@ -543,7 +555,7 @@ struct StudioView: View {
         let wasPlaying = monitor.isPlaying
         fineTuneTask?.cancel()
         playTask?.cancel()
-        cancelBusyOperation()
+        operationState.cancelPlayback()
         monitor.stopMonitoring()
         guard wasPlaying,
               let rawReason = notification.userInfo?[AudioPlaybackNotification.reasonKey] as? String,
@@ -810,7 +822,7 @@ struct StudioView: View {
         }
         .buttonStyle(.bordered)
         .tint(theme.accent)
-        .disabled(isBusy)
+        .disabled(operationState.isBusy)
     }
 
     private func studioToggleRow(title: String, isOn: Binding<Bool>) -> some View {
@@ -908,15 +920,15 @@ struct StudioView: View {
 
     @ViewBuilder
     private var playControlButton: some View {
-        let showStop = monitor.isPlaying && !isBusy
+        let showStop = monitor.isPlaying && !operationState.isBusy
         let label = HStack(spacing: 6) {
-            if isBusy {
+            if operationState.isBusy {
                 ProgressView()
                     .tint(theme.accent)
             } else {
                 Image(systemName: showStop ? "stop.fill" : "play.fill")
             }
-            Text(isBusy ? "生成中" : (showStop ? "停止" : "再生"))
+            Text(operationState.isBusy ? "生成中" : (showStop ? "停止" : "再生"))
                 .font(.subheadline.weight(.semibold))
         }
         .frame(maxWidth: .infinity)
@@ -934,7 +946,7 @@ struct StudioView: View {
             label
                 .foregroundStyle(showStop ? Color.white : theme.accent)
         }
-        .disabled(isBusy)
+        .disabled(operationState.isBusy)
         .modifier(PlayButtonChrome(isPlaying: showStop))
     }
 
@@ -953,7 +965,7 @@ struct StudioView: View {
         }
         .buttonStyle(.bordered)
         .tint(theme.accent)
-        .disabled(isBusy)
+        .disabled(operationState.isBusy)
         .opacity(patternFlash ? 0.7 : 1)
         .animation(.easeOut(duration: 0.12), value: patternFlash)
     }
@@ -1068,8 +1080,7 @@ struct StudioView: View {
         fineTuneTask?.cancel()
         playTask?.cancel()
         exportTask?.cancel()
-        showGeneratingOverlay = false
-        cancelBusyOperation()
+        operationState.cancel()
         service.stop()
         monitor.stopMonitoring()
     }
@@ -1187,11 +1198,13 @@ struct StudioView: View {
         let savedPitch = bgmPitch
         let savedRhythm = bgmRhythm
         let savedMelody = bgmMelody
-        let operationID = beginBusyOperation()
-        showGeneratingOverlay = true
+        let operationID = operationState.begin(
+            kind: .playback,
+            showsGeneratingOverlay: true
+        )
         await Task.yield()
         defer {
-            endBusyOperation(operationID, hidesGeneratingOverlay: true)
+            operationState.end(operationID)
         }
         do {
             let mappedRecipe = try service.map(intent)
@@ -1361,14 +1374,16 @@ struct StudioView: View {
         let needsGenerate = mapped == nil || catalogDirty || newSeed
         let showOverlay = soundType == .bgm && needsGenerate
 
-        let operationID = beginBusyOperation()
+        let operationID = operationState.begin(
+            kind: .playback,
+            showsGeneratingOverlay: showOverlay
+        )
         if showOverlay {
-            showGeneratingOverlay = true
             // Allow the overlay to paint before heavy work.
             await Task.yield()
         }
         defer {
-            endBusyOperation(operationID, hidesGeneratingOverlay: true)
+            operationState.end(operationID)
         }
 
         do {
@@ -1459,14 +1474,16 @@ struct StudioView: View {
         let intent = currentIntent()
         playTask?.cancel()
         playTask = Task { @MainActor in
-            let operationID = beginBusyOperation()
             let showOverlay = soundType == .bgm
+            let operationID = operationState.begin(
+                kind: .playback,
+                showsGeneratingOverlay: showOverlay
+            )
             if showOverlay {
-                showGeneratingOverlay = true
                 await Task.yield()
             }
             defer {
-                endBusyOperation(operationID, hidesGeneratingOverlay: true)
+                operationState.end(operationID)
             }
             do {
                 if soundType == .bgm {
@@ -1498,18 +1515,12 @@ struct StudioView: View {
     }
 
     private func exportAndShareAsync() async {
-        let operationID = beginBusyOperation()
-        defer { endBusyOperation(operationID) }
+        let operationID = operationState.begin(kind: .export)
+        defer { operationState.end(operationID) }
         do {
             let mapped = try resolvedRecipeForCurrentControls()
             let intent = currentIntent()
-            if soundType == .bgm {
-                _ = try await service.generateMappedAsync(mapped, intent: intent)
-            } else {
-                _ = service.generate(mapped: mapped, intent: intent)
-            }
-            try Task.checkCancellation()
-            let url = try service.exportLastToDocuments()
+            let url = try await generationViewModel.export(recipe: mapped, intent: intent)
             exportURL = url
             showShareSheet = true
         } catch is CancellationError {
@@ -1591,8 +1602,8 @@ struct StudioView: View {
     }
 
     private func run(_ work: () throws -> Void) {
-        let operationID = beginBusyOperation()
-        defer { endBusyOperation(operationID) }
+        let operationID = operationState.begin(kind: .librarySave)
+        defer { operationState.end(operationID) }
         do {
             try work()
         } catch {
@@ -1601,27 +1612,6 @@ struct StudioView: View {
         }
     }
 
-    private func beginBusyOperation() -> UUID {
-        let id = UUID()
-        activeBusyOperationID = id
-        isBusy = true
-        return id
-    }
-
-    private func endBusyOperation(_ id: UUID, hidesGeneratingOverlay: Bool = false) {
-        guard activeBusyOperationID == id else { return }
-        activeBusyOperationID = nil
-        isBusy = false
-        if hidesGeneratingOverlay {
-            showGeneratingOverlay = false
-        }
-    }
-
-    private func cancelBusyOperation() {
-        activeBusyOperationID = nil
-        isBusy = false
-        showGeneratingOverlay = false
-    }
 }
 
 // MARK: - Library
