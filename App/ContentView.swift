@@ -1800,9 +1800,7 @@ struct LibraryView: View {
     }
 
     private func remove(_ entry: LibraryEntry) {
-        if playbackViewModel.isPlaying(entry) {
-            playbackViewModel.stop()
-        }
+        playbackViewModel.stopIfActive(entry)
         do {
             try library.remove(entry)
         } catch {

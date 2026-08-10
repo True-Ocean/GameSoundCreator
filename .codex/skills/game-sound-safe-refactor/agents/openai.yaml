@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Sound Safe Refactor"
+  short_description: "Review and refactor this iOS audio app safely"
+  default_prompt: "Use $game-sound-safe-refactor to review and implement this repository change one verified step at a time."

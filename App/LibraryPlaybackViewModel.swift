@@ -11,6 +11,10 @@ final class LibraryPlaybackViewModel {
     private var playbackTask: Task<Void, Never>?
 
     private(set) var playingID: UUID?
+    /// Tracks the entry while its audio is still being generated. `playingID` is
+    /// set only once playback actually starts.
+    private var generatingID: UUID?
+    private var playbackRequestID: UUID?
 
     var isBusy: Bool { operationState.isBusy }
 
@@ -32,19 +36,31 @@ final class LibraryPlaybackViewModel {
         }
 
         playbackTask?.cancel()
+        let requestID = UUID()
+        playbackRequestID = requestID
+        generatingID = entry.id
         playbackTask = Task { [weak self] in
             guard let self else { return }
             let operationID = operationState.begin(kind: .playback)
-            defer { operationState.end(operationID) }
+            defer {
+                operationState.end(operationID)
+                if playbackRequestID == requestID {
+                    playbackTask = nil
+                    playbackRequestID = nil
+                    generatingID = nil
+                }
+            }
 
             do {
                 _ = try await service.generateAsync(entry.intent)
                 try Task.checkCancellation()
+                guard playbackRequestID == requestID else { throw CancellationError() }
                 try service.playLast(loop: entry.intent.soundType == .bgm)
                 playingID = entry.id
             } catch is CancellationError {
                 // A newer library playback request superseded this one.
             } catch {
+                guard playbackRequestID == requestID else { return }
                 onError(error)
             }
         }
@@ -55,13 +71,24 @@ final class LibraryPlaybackViewModel {
         playbackTask = nil
         service.stop()
         playingID = nil
+        generatingID = nil
+        playbackRequestID = nil
         operationState.cancelPlayback()
+    }
+
+    /// Cancels only the playback work associated with the entry being removed.
+    /// This covers both already-playing audio and audio still being generated.
+    func stopIfActive(_ entry: LibraryEntry) {
+        guard generatingID == entry.id || playingID == entry.id else { return }
+        stop()
     }
 
     func handleSystemStop() {
         playbackTask?.cancel()
         playbackTask = nil
         playingID = nil
+        generatingID = nil
+        playbackRequestID = nil
         operationState.cancelPlayback()
     }
 }

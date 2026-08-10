@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Sound Strict Reviewer"
+  short_description: "Independent defect-first reviewer for this iOS app"
+  default_prompt: "Use $game-sound-strict-reviewer to conduct an independent, read-only review of the current change."
