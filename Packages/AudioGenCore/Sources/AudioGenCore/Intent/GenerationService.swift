@@ -1,6 +1,17 @@
 import AVFoundation
 import Foundation
 
+public enum PlaybackStopReason: String, Sendable {
+    case interruption
+    case outputDeviceDisconnected
+}
+
+public enum AudioPlaybackNotification {
+    /// Posted on the main actor when system audio conditions stop playback.
+    public static let stopped = Notification.Name("AudioGenCore.playbackStopped")
+    public static let reasonKey = "reason"
+}
+
 /// Generates audio from Intent and plays/exports via existing engines.
 /// Use `shared` so only one playback engine exists across screens.
 @MainActor
@@ -18,18 +29,59 @@ public final class GenerationService {
     public private(set) var lastBuffer: AVAudioPCMBuffer?
     public private(set) var lastExportURL: URL?
     public private(set) var lastGenerationSeconds: Double = 0
+    /// Monotonically increasing request token. A completed background synthesis may
+    /// only publish its result when it is still the newest request.
+    private var latestGenerationRequest = 0
 
-    public init() {}
+    #if os(iOS)
+    private var interruptionMonitorTask: Task<Void, Never>?
+    private var routeChangeMonitorTask: Task<Void, Never>?
+    #endif
+
+    public init() {
+        #if os(iOS)
+        interruptionMonitorTask = Task { [weak self] in
+            for await notification in NotificationCenter.default.notifications(
+                named: AVAudioSession.interruptionNotification
+            ) {
+                guard let self, !Task.isCancelled else { break }
+                self.handleAudioInterruption(notification)
+            }
+        }
+        routeChangeMonitorTask = Task { [weak self] in
+            for await notification in NotificationCenter.default.notifications(
+                named: AVAudioSession.routeChangeNotification
+            ) {
+                guard let self, !Task.isCancelled else { break }
+                self.handleAudioRouteChange(notification)
+            }
+        }
+        #endif
+    }
+
+    deinit {
+        #if os(iOS)
+        interruptionMonitorTask?.cancel()
+        routeChangeMonitorTask?.cancel()
+        #endif
+    }
+
+    /// Resolves an intent without synthesizing audio. Callers that need to adjust a
+    /// mapped recipe can therefore do so before paying for a single synthesis pass.
+    public func map(_ intent: SoundIntent) throws -> MappedRecipe {
+        try mapper.map(intent)
+    }
 
     @discardableResult
     public func generate(_ intent: SoundIntent) throws -> (MappedRecipe, AVAudioPCMBuffer) {
-        let mapped = try mapper.map(intent)
+        let mapped = try map(intent)
         let buffer = generate(mapped: mapped, intent: intent)
         return (mapped, buffer)
     }
 
     @discardableResult
     public func generate(mapped: MappedRecipe, intent: SoundIntent? = nil) -> AVAudioPCMBuffer {
+        let request = beginGenerationRequest()
         let started = Date()
         let buffer: AVAudioPCMBuffer
         switch mapped {
@@ -38,10 +90,7 @@ public final class GenerationService {
         case .bgm(let recipe):
             buffer = bgmEngine.generate(recipe)
         }
-        lastGenerationSeconds = Date().timeIntervalSince(started)
-        if let intent { lastIntent = intent }
-        lastMapped = mapped
-        lastBuffer = buffer
+        publish(buffer, mapped: mapped, intent: intent, started: started, request: request)
         return buffer
     }
 
@@ -99,24 +148,45 @@ public final class GenerationService {
     /// Maps on the caller (main actor), synthesizes off the main actor.
     public func generateAsync(_ intent: SoundIntent) async throws -> (MappedRecipe, AVAudioPCMBuffer) {
         let started = Date()
-        let mapped = try mapper.map(intent)
+        let request = beginGenerationRequest()
+        let mapped = try map(intent)
         let buffer = await synthesizeAsync(mapped)
-        lastGenerationSeconds = Date().timeIntervalSince(started)
-        lastIntent = intent
-        lastMapped = mapped
-        lastBuffer = buffer
+        try Task.checkCancellation()
+        guard request == latestGenerationRequest else { throw CancellationError() }
+        publish(buffer, mapped: mapped, intent: intent, started: started, request: request)
         return (mapped, buffer)
     }
 
     /// Synthesizes a resolved recipe off the main actor, then stores it for play/export.
-    public func generateMappedAsync(_ mapped: MappedRecipe, intent: SoundIntent? = nil) async -> AVAudioPCMBuffer {
+    public func generateMappedAsync(_ mapped: MappedRecipe, intent: SoundIntent? = nil) async throws -> AVAudioPCMBuffer {
         let started = Date()
+        let request = beginGenerationRequest()
         let buffer = await synthesizeAsync(mapped)
+        try Task.checkCancellation()
+        guard request == latestGenerationRequest else { throw CancellationError() }
+        publish(buffer, mapped: mapped, intent: intent, started: started, request: request)
+        return buffer
+    }
+
+    private func beginGenerationRequest() -> Int {
+        latestGenerationRequest &+= 1
+        return latestGenerationRequest
+    }
+
+    private func publish(
+        _ buffer: AVAudioPCMBuffer,
+        mapped: MappedRecipe,
+        intent: SoundIntent?,
+        started: Date,
+        request: Int
+    ) {
+        // Synchronous generation cannot be superseded while this main-actor method
+        // is running, but keep the guard so all generation paths have one policy.
+        guard request == latestGenerationRequest else { return }
         lastGenerationSeconds = Date().timeIntervalSince(started)
         if let intent { lastIntent = intent }
         lastMapped = mapped
         lastBuffer = buffer
-        return buffer
     }
 
     private func synthesizeAsync(_ mapped: MappedRecipe) async -> AVAudioPCMBuffer {
@@ -140,7 +210,15 @@ public final class GenerationService {
         guard let mapped = lastMapped, let buffer = lastBuffer else {
             throw AudioPlayerError.emptyBuffer
         }
-        let url = try WAVExporter.documentsDirectory().appendingPathComponent(mapped.exportFileName)
+        let documents = try WAVExporter.documentsDirectory()
+        let requestedURL = documents.appendingPathComponent(mapped.exportFileName)
+        let url: URL
+        if FileManager.default.fileExists(atPath: requestedURL.path) {
+            let stem = requestedURL.deletingPathExtension().lastPathComponent
+            url = documents.appendingPathComponent("\(stem)_\(UUID().uuidString.prefix(8)).wav")
+        } else {
+            url = requestedURL
+        }
         let written = try exporter.export(buffer: buffer, to: url)
         lastExportURL = written
         return written
@@ -159,4 +237,31 @@ public final class GenerationService {
         try session.setActive(true)
         #endif
     }
+
+    #if os(iOS)
+    private func handleAudioInterruption(_ notification: Notification) {
+        guard let rawValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              AVAudioSession.InterruptionType(rawValue: rawValue) == .began else {
+            return
+        }
+        stopForSystemReason(.interruption)
+    }
+
+    private func handleAudioRouteChange(_ notification: Notification) {
+        guard let rawValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              AVAudioSession.RouteChangeReason(rawValue: rawValue) == .oldDeviceUnavailable else {
+            return
+        }
+        stopForSystemReason(.outputDeviceDisconnected)
+    }
+
+    private func stopForSystemReason(_ reason: PlaybackStopReason) {
+        player.stop()
+        NotificationCenter.default.post(
+            name: AudioPlaybackNotification.stopped,
+            object: self,
+            userInfo: [AudioPlaybackNotification.reasonKey: reason.rawValue]
+        )
+    }
+    #endif
 }

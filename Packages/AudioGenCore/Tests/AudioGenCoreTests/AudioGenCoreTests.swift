@@ -1108,6 +1108,33 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertTrue(hasEnergy(a))
     }
 
+    @MainActor
+    func testNewerGenerationWinsWhenOlderBackgroundSynthesisCompletes() async throws {
+        let service = GenerationService()
+        var slowRecipe = BGMPreset.battleNormal.makeRecipe(seed: 31)
+        slowRecipe.params.bars = 32
+        let old = MappedRecipe.bgm(slowRecipe)
+        let latest = MappedRecipe.sfx(SFXRecipe.make(category: .uiConfirm, seed: 99))
+
+        let oldTask: Task<Void, Error> = Task { @MainActor in
+            _ = try await service.generateMappedAsync(old)
+        }
+        // Let the old task reserve a generation request and enter its background work.
+        await Task.yield()
+        _ = service.generate(mapped: latest)
+
+        do {
+            _ = try await oldTask.value
+            XCTFail("A superseded generation must not publish a result")
+        } catch is CancellationError {
+            // Expected: the newer synchronous request owns the service state.
+        }
+
+        XCTAssertEqual(service.lastMapped, latest)
+        XCTAssertEqual(service.lastIntent, nil)
+        XCTAssertNotNil(service.lastBuffer)
+    }
+
     // MARK: - Helpers
 
     private func assertBuffersEqual(_ a: AVAudioPCMBuffer, _ b: AVAudioPCMBuffer, file: StaticString = #filePath, line: UInt = #line) {

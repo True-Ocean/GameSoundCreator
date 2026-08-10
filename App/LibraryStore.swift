@@ -20,6 +20,7 @@ final class LibraryStore: ObservableObject {
     static let shared = LibraryStore()
 
     @Published private(set) var entries: [LibraryEntry] = []
+    @Published private(set) var loadError: String?
     private let fileName = "library.json"
 
     private var fileURL: URL {
@@ -32,14 +33,29 @@ final class LibraryStore: ObservableObject {
     }
 
     func load() {
-        guard let data = try? Data(contentsOf: fileURL) else {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
             entries = []
             return
         }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        entries = (try? decoder.decode([LibraryEntry].self, from: data)) ?? []
-        entries.sort { $0.savedAt > $1.savedAt }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            entries = try decoder.decode([LibraryEntry].self, from: data)
+            entries.sort { $0.savedAt > $1.savedAt }
+            loadError = nil
+        } catch {
+            let backupURL = fileURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("library-corrupt-\(UUID().uuidString).json")
+            if (try? FileManager.default.moveItem(at: fileURL, to: backupURL)) != nil {
+                loadError = "ライブラリを読み込めなかったため、破損したデータを \(backupURL.lastPathComponent) として退避しました。"
+            } else {
+                loadError = "ライブラリを読み込めませんでした。"
+            }
+            entries = []
+        }
     }
 
     func save(_ intent: SoundIntent, exportFileName: String? = nil) throws {
@@ -47,20 +63,38 @@ final class LibraryStore: ObservableObject {
         if next.seed == nil {
             next.seed = UInt64.random(in: 1...999_999)
         }
+        let previous = entries
         entries.insert(LibraryEntry(intent: next, exportFileName: exportFileName), at: 0)
         if entries.count > 50 {
             entries = Array(entries.prefix(50))
         }
-        try persist()
+        do {
+            try persist()
+        } catch {
+            entries = previous
+            throw error
+        }
     }
 
     func remove(_ entry: LibraryEntry) throws {
+        let previous = entries
         entries.removeAll { $0.id == entry.id }
-        try persist()
+        do {
+            try persist()
+        } catch {
+            entries = previous
+            throw error
+        }
     }
 
     var recent: [LibraryEntry] {
         Array(entries.prefix(8))
+    }
+
+    /// Returns a recovery notice once so revisiting the library does not repeat it.
+    func consumeLoadError() -> String? {
+        defer { loadError = nil }
+        return loadError
     }
 
     private func persist() throws {

@@ -281,11 +281,13 @@ struct StudioView: View {
     @State private var exportURL: URL?
     @State private var showShareSheet = false
     @State private var isBusy = false
+    @State private var activeBusyOperationID: UUID?
     @State private var didAppear = false
     @State private var patternFlash = false
     @State private var suppressFineTuneReact = false
     @State private var fineTuneTask: Task<Void, Never>?
     @State private var playTask: Task<Void, Never>?
+    @State private var exportTask: Task<Void, Never>?
     @State private var showGeneratingOverlay = false
 
     @State private var monitor = PlaybackMonitor()
@@ -486,6 +488,12 @@ struct StudioView: View {
         view
             .onAppear(perform: handleStudioAppear)
             .onDisappear(perform: handleStudioDisappear)
+            .onReceive(NotificationCenter.default.publisher(
+                for: AudioPlaybackNotification.stopped,
+                object: service
+            )) { notification in
+                handleSystemPlaybackStop(notification)
+            }
     }
 
     private func applyFineTuneObservers<V: View>(to view: V) -> some View {
@@ -525,8 +533,29 @@ struct StudioView: View {
     private func handleStudioDisappear() {
         fineTuneTask?.cancel()
         playTask?.cancel()
+        exportTask?.cancel()
+        cancelBusyOperation()
         service.stop()
         monitor.stopMonitoring()
+    }
+
+    private func handleSystemPlaybackStop(_ notification: Notification) {
+        let wasPlaying = monitor.isPlaying
+        fineTuneTask?.cancel()
+        playTask?.cancel()
+        cancelBusyOperation()
+        monitor.stopMonitoring()
+        guard wasPlaying,
+              let rawReason = notification.userInfo?[AudioPlaybackNotification.reasonKey] as? String,
+              let reason = PlaybackStopReason(rawValue: rawReason) else {
+            return
+        }
+        switch reason {
+        case .interruption:
+            showToast("他の音声再生のため停止しました")
+        case .outputDeviceDisconnected:
+            showToast("出力デバイスが切断されたため停止しました")
+        }
     }
 
     /// SFX: all controls on one screen (no modal, no scroll).
@@ -1038,8 +1067,9 @@ struct StudioView: View {
         exportURL = nil
         fineTuneTask?.cancel()
         playTask?.cancel()
+        exportTask?.cancel()
         showGeneratingOverlay = false
-        isBusy = false
+        cancelBusyOperation()
         service.stop()
         monitor.stopMonitoring()
     }
@@ -1048,6 +1078,7 @@ struct StudioView: View {
     private func scheduleBGMLiveFromIntent() {
         guard soundType == .bgm, !suppressFineTuneReact else { return }
         exportURL = nil
+        exportTask?.cancel()
         fineTuneTask?.cancel()
         if catalogDirty || mapped == nil {
             catalogDirty = true
@@ -1156,15 +1187,14 @@ struct StudioView: View {
         let savedPitch = bgmPitch
         let savedRhythm = bgmRhythm
         let savedMelody = bgmMelody
-        isBusy = true
+        let operationID = beginBusyOperation()
         showGeneratingOverlay = true
         await Task.yield()
         defer {
-            isBusy = false
-            showGeneratingOverlay = false
+            endBusyOperation(operationID, hidesGeneratingOverlay: true)
         }
         do {
-            let (mappedRecipe, _) = try await service.generateAsync(intent)
+            let mappedRecipe = try service.map(intent)
             guard !Task.isCancelled else { return }
             mapped = mappedRecipe
             syncFineTuneFromMapped(mappedRecipe)
@@ -1180,7 +1210,7 @@ struct StudioView: View {
             }
             applyCurrentBGMParamsToMapped()
             if let mapped {
-                _ = await service.generateMappedAsync(mapped, intent: intent)
+                _ = try await service.generateMappedAsync(mapped, intent: intent)
             }
             catalogDirty = false
             try service.playLast(loop: loopEnabled)
@@ -1210,6 +1240,7 @@ struct StudioView: View {
         catalogDirty = true
         exportURL = nil
         fineTuneTask?.cancel()
+        exportTask?.cancel()
         service.stop()
         monitor.stopMonitoring()
     }
@@ -1217,6 +1248,7 @@ struct StudioView: View {
     private func markSFXParamsEdited() {
         guard soundType == .sfx, !suppressFineTuneReact else { return }
         exportURL = nil
+        exportTask?.cancel()
     }
 
     private func syncSFXSlidersFromMood() {
@@ -1264,6 +1296,7 @@ struct StudioView: View {
         guard !suppressFineTuneReact else { return }
         guard mapped != nil, !catalogDirty else { return }
         exportURL = nil
+        exportTask?.cancel()
         fineTuneTask?.cancel()
         // Not playing: keep edits for the next 再生; don't auto-start.
         guard monitor.isPlaying else { return }
@@ -1328,15 +1361,14 @@ struct StudioView: View {
         let needsGenerate = mapped == nil || catalogDirty || newSeed
         let showOverlay = soundType == .bgm && needsGenerate
 
-        isBusy = true
+        let operationID = beginBusyOperation()
         if showOverlay {
             showGeneratingOverlay = true
             // Allow the overlay to paint before heavy work.
             await Task.yield()
         }
         defer {
-            isBusy = false
-            showGeneratingOverlay = false
+            endBusyOperation(operationID, hidesGeneratingOverlay: true)
         }
 
         do {
@@ -1348,7 +1380,7 @@ struct StudioView: View {
                     let savedRhythm = bgmRhythm
                     let savedMelody = bgmMelody
                     let savedInstrument = instrumentId
-                    let (mappedRecipe, _) = try await service.generateAsync(intent)
+                    let mappedRecipe = try service.map(intent)
                     guard !Task.isCancelled else { return }
                     mapped = mappedRecipe
                     if newSeed {
@@ -1357,12 +1389,14 @@ struct StudioView: View {
                         bgmRhythm = savedRhythm
                         bgmMelody = savedMelody
                         instrumentId = savedInstrument
-                        applyCurrentBGMParamsToMapped()
-                        if let mapped {
-                            _ = await service.generateMappedAsync(mapped, intent: intent)
-                        }
                     } else {
                         syncFineTuneFromMapped(mappedRecipe)
+                    }
+                    // A newly mapped BGM has no buffer yet. Apply the visible
+                    // controls, then synthesize exactly once before playLast().
+                    applyCurrentBGMParamsToMapped()
+                    if let mapped {
+                        _ = try await service.generateMappedAsync(mapped, intent: intent)
                     }
                 } else {
                     let (mappedRecipe, _) = try service.generate(intent)
@@ -1374,7 +1408,7 @@ struct StudioView: View {
             } else if soundType == .bgm {
                 applyCurrentBGMParamsToMapped()
                 if let mapped {
-                    _ = await service.generateMappedAsync(mapped, intent: intent)
+                    _ = try await service.generateMappedAsync(mapped, intent: intent)
                 }
             }
             guard !Task.isCancelled else { return }
@@ -1425,19 +1459,18 @@ struct StudioView: View {
         let intent = currentIntent()
         playTask?.cancel()
         playTask = Task { @MainActor in
-            isBusy = true
+            let operationID = beginBusyOperation()
             let showOverlay = soundType == .bgm
             if showOverlay {
                 showGeneratingOverlay = true
                 await Task.yield()
             }
             defer {
-                isBusy = false
-                showGeneratingOverlay = false
+                endBusyOperation(operationID, hidesGeneratingOverlay: true)
             }
             do {
                 if soundType == .bgm {
-                    _ = await service.generateMappedAsync(current, intent: intent)
+                    _ = try await service.generateMappedAsync(current, intent: intent)
                 } else {
                     _ = service.generate(mapped: current, intent: intent)
                 }
@@ -1447,6 +1480,9 @@ struct StudioView: View {
                     duration: current.durationSeconds,
                     looping: loopEnabled
                 )
+            } catch is CancellationError {
+                // A newer fine-tune / play request superseded this task.
+                return
             } catch {
                 errorText = error.localizedDescription
                 showError = true
@@ -1455,30 +1491,62 @@ struct StudioView: View {
     }
 
     private func exportAndShare() {
-        run {
-            if mapped == nil || catalogDirty {
-                let (mappedRecipe, _) = try service.generate(currentIntent())
-                mapped = mappedRecipe
-                syncFineTuneFromMapped(mappedRecipe)
-                catalogDirty = false
-            } else if service.lastBuffer == nil, let mapped {
-                _ = service.generate(mapped: mapped, intent: currentIntent())
+        exportTask?.cancel()
+        exportTask = Task { @MainActor in
+            await exportAndShareAsync()
+        }
+    }
+
+    private func exportAndShareAsync() async {
+        let operationID = beginBusyOperation()
+        defer { endBusyOperation(operationID) }
+        do {
+            let mapped = try resolvedRecipeForCurrentControls()
+            let intent = currentIntent()
+            if soundType == .bgm {
+                _ = try await service.generateMappedAsync(mapped, intent: intent)
+            } else {
+                _ = service.generate(mapped: mapped, intent: intent)
             }
+            try Task.checkCancellation()
             let url = try service.exportLastToDocuments()
             exportURL = url
             showShareSheet = true
+        } catch is CancellationError {
+            return
+        } catch {
+            errorText = error.localizedDescription
+            showError = true
         }
+    }
+
+    /// Produces a recipe from the visible controls immediately before an action.
+    /// This avoids using an older cached recipe after a slider edit.
+    private func resolvedRecipeForCurrentControls() throws -> MappedRecipe {
+        if mapped == nil || catalogDirty {
+            let mappedRecipe = try service.map(currentIntent())
+            mapped = mappedRecipe
+            syncFineTuneFromMapped(mappedRecipe)
+            catalogDirty = false
+        }
+        if soundType == .bgm {
+            applyCurrentBGMParamsToMapped()
+        } else {
+            applyCurrentSFXParamsToMapped()
+        }
+        guard let mapped else { throw AudioPlayerError.emptyBuffer }
+        return mapped
     }
 
     private func saveLibrary() {
         run {
-            if mapped == nil || catalogDirty {
-                let (mappedRecipe, _) = try service.generate(currentIntent())
-                mapped = mappedRecipe
-                syncFineTuneFromMapped(mappedRecipe)
-                catalogDirty = false
-            }
-            try library.save(currentIntent(), exportFileName: mapped?.exportFileName)
+            let currentRecipe = try resolvedRecipeForCurrentControls()
+            // Persist a file reference only when the most recently exported buffer
+            // is exactly the recipe being saved.
+            let exportFileName = service.lastMapped == currentRecipe
+                ? service.lastExportURL?.lastPathComponent
+                : nil
+            try library.save(currentIntent(), exportFileName: exportFileName)
             showToast("ライブラリに保存しました")
         }
     }
@@ -1523,14 +1591,36 @@ struct StudioView: View {
     }
 
     private func run(_ work: () throws -> Void) {
-        isBusy = true
-        defer { isBusy = false }
+        let operationID = beginBusyOperation()
+        defer { endBusyOperation(operationID) }
         do {
             try work()
         } catch {
             errorText = error.localizedDescription
             showError = true
         }
+    }
+
+    private func beginBusyOperation() -> UUID {
+        let id = UUID()
+        activeBusyOperationID = id
+        isBusy = true
+        return id
+    }
+
+    private func endBusyOperation(_ id: UUID, hidesGeneratingOverlay: Bool = false) {
+        guard activeBusyOperationID == id else { return }
+        activeBusyOperationID = nil
+        isBusy = false
+        if hidesGeneratingOverlay {
+            showGeneratingOverlay = false
+        }
+    }
+
+    private func cancelBusyOperation() {
+        activeBusyOperationID = nil
+        isBusy = false
+        showGeneratingOverlay = false
     }
 }
 
@@ -1641,7 +1731,19 @@ struct LibraryView: View {
                 }
             }
         }
-        .onAppear { library.load() }
+        .onAppear {
+            library.load()
+            if let loadError = library.consumeLoadError() {
+                errorText = loadError
+                showError = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: AudioPlaybackNotification.stopped,
+            object: service
+        )) { _ in
+            playingId = nil
+        }
         .onDisappear {
             service.stop()
             playingId = nil
@@ -1752,7 +1854,13 @@ struct LibraryView: View {
             service.stop()
             playingId = nil
         }
-        try? library.remove(entry)
+        do {
+            try library.remove(entry)
+        } catch {
+            errorText = error.localizedDescription
+            showError = true
+            return
+        }
         if library.entries.isEmpty {
             isDeleting = false
         }
