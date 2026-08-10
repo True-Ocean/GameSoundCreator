@@ -279,12 +279,10 @@ struct StudioView: View {
     @State private var showError = false
     @State private var toast: String?
     @State private var showShareSheet = false
-    @State private var operationState = StudioOperationState()
     @State private var didAppear = false
     @State private var patternFlash = false
     @State private var suppressFineTuneReact = false
     @State private var fineTuneTask: Task<Void, Never>?
-    @State private var playTask: Task<Void, Never>?
     @State private var exportTask: Task<Void, Never>?
 
     @State private var monitor = PlaybackMonitor()
@@ -303,6 +301,7 @@ struct StudioView: View {
     @State private var bgmSceneDefaultTempo: Double?
 
     private var service: GenerationService { GenerationService.shared }
+    private var operationState: StudioOperationState { generationViewModel.operationState }
 
     private var mapped: MappedRecipe? {
         get { generationState.mapped }
@@ -544,7 +543,7 @@ struct StudioView: View {
 
     private func handleStudioDisappear() {
         fineTuneTask?.cancel()
-        playTask?.cancel()
+        generationViewModel.cancelPlayback()
         exportTask?.cancel()
         operationState.cancel()
         service.stop()
@@ -554,8 +553,7 @@ struct StudioView: View {
     private func handleSystemPlaybackStop(_ notification: Notification) {
         let wasPlaying = monitor.isPlaying
         fineTuneTask?.cancel()
-        playTask?.cancel()
-        operationState.cancelPlayback()
+        generationViewModel.cancelPlayback()
         monitor.stopMonitoring()
         guard wasPlaying,
               let rawReason = notification.userInfo?[AudioPlaybackNotification.reasonKey] as? String,
@@ -1078,7 +1076,7 @@ struct StudioView: View {
         catalogDirty = true
         exportURL = nil
         fineTuneTask?.cancel()
-        playTask?.cancel()
+        generationViewModel.cancelPlayback()
         exportTask?.cancel()
         operationState.cancel()
         service.stop()
@@ -1103,7 +1101,7 @@ struct StudioView: View {
             try? await Task.sleep(for: .milliseconds(180))
             guard !Task.isCancelled else { return }
             guard !catalogDirty, mapped != nil, monitor.isPlaying else { return }
-            await reloadBGMFromIntentLive()
+            startLiveBGMReload()
         }
     }
 
@@ -1176,7 +1174,7 @@ struct StudioView: View {
         fineTuneTask?.cancel()
         if wasPlaying, mapped != nil, !catalogDirty {
             fineTuneTask = Task { @MainActor in
-                await reloadBGMFromIntentLive(preservePitchRhythmMelody: false)
+                startLiveBGMReload(preservePitchRhythmMelody: false)
             }
         } else {
             catalogDirty = true
@@ -1193,50 +1191,46 @@ struct StudioView: View {
         mapped = .bgm(recipe)
     }
 
-    private func reloadBGMFromIntentLive(preservePitchRhythmMelody: Bool = true) async {
+    private func startLiveBGMReload(preservePitchRhythmMelody: Bool = true) {
+        generationViewModel.startPlayback(
+            showsGeneratingOverlay: true,
+            work: {
+                try await reloadBGMFromIntentLive(
+                    preservePitchRhythmMelody: preservePitchRhythmMelody
+                )
+            },
+            onError: presentError
+        )
+    }
+
+    private func reloadBGMFromIntentLive(preservePitchRhythmMelody: Bool = true) async throws {
         let intent = currentIntent()
         let savedPitch = bgmPitch
         let savedRhythm = bgmRhythm
         let savedMelody = bgmMelody
-        let operationID = operationState.begin(
-            kind: .playback,
-            showsGeneratingOverlay: true
+        let mappedRecipe = try service.map(intent)
+        try Task.checkCancellation()
+        mapped = mappedRecipe
+        syncFineTuneFromMapped(mappedRecipe)
+        if preservePitchRhythmMelody {
+            // Keep fine-tune pitch/rhythm/melody across mood-driven remaps.
+            bgmPitch = savedPitch
+            bgmRhythm = savedRhythm
+            bgmMelody = savedMelody
+        } else {
+            bgmPitch = 0
+            bgmRhythm = 0.5
+            bgmMelody = true
+        }
+        applyCurrentBGMParamsToMapped()
+        guard let mapped else { throw AudioPlayerError.emptyBuffer }
+        try await generationViewModel.generateAndPlay(
+            recipe: mapped,
+            intent: intent,
+            loopEnabled: loopEnabled
         )
-        await Task.yield()
-        defer {
-            operationState.end(operationID)
-        }
-        do {
-            let mappedRecipe = try service.map(intent)
-            guard !Task.isCancelled else { return }
-            mapped = mappedRecipe
-            syncFineTuneFromMapped(mappedRecipe)
-            if preservePitchRhythmMelody {
-                // Keep fine-tune pitch/rhythm/melody across mood-driven remaps.
-                bgmPitch = savedPitch
-                bgmRhythm = savedRhythm
-                bgmMelody = savedMelody
-            } else {
-                bgmPitch = 0
-                bgmRhythm = 0.5
-                bgmMelody = true
-            }
-            applyCurrentBGMParamsToMapped()
-            if let mapped {
-                try await generationViewModel.generateAndPlay(
-                    recipe: mapped,
-                    intent: intent,
-                    loopEnabled: loopEnabled
-                )
-            }
-            catalogDirty = false
-            monitor.start(duration: mapped?.durationSeconds ?? 1, looping: loopEnabled)
-        } catch is CancellationError {
-            return
-        } catch {
-            errorText = error.localizedDescription
-            showError = true
-        }
+        catalogDirty = false
+        monitor.start(duration: mapped.durationSeconds, looping: loopEnabled)
     }
 
     private func applyPurposeGroupInline(_ group: String) {
@@ -1362,85 +1356,65 @@ struct StudioView: View {
     }
 
     private func playNow(newSeed: Bool) {
-        playTask?.cancel()
-        playTask = Task { @MainActor in
-            await playNowAsync(newSeed: newSeed)
-        }
+        let needsGenerate = mapped == nil || catalogDirty || newSeed
+        generationViewModel.startPlayback(
+            showsGeneratingOverlay: soundType == .bgm && needsGenerate,
+            work: { try await playNowAsync(newSeed: newSeed) },
+            onError: presentError
+        )
     }
 
-    private func playNowAsync(newSeed: Bool) async {
+    private func playNowAsync(newSeed: Bool) async throws {
         if newSeed {
             seed = UInt64.random(in: 1...999_999)
             catalogDirty = true
         }
         let intent = currentIntent()
         let needsGenerate = mapped == nil || catalogDirty || newSeed
-        let showOverlay = soundType == .bgm && needsGenerate
-
-        let operationID = operationState.begin(
-            kind: .playback,
-            showsGeneratingOverlay: showOverlay
-        )
-        if showOverlay {
-            // Allow the overlay to paint before heavy work.
-            await Task.yield()
-        }
-        defer {
-            operationState.end(operationID)
-        }
-
-        do {
-            if needsGenerate {
-                if soundType == .bgm {
-                    // 別パターン must keep UI conditions; only seed changes.
-                    let savedTempo = bgmTempo
-                    let savedPitch = bgmPitch
-                    let savedRhythm = bgmRhythm
-                    let savedMelody = bgmMelody
-                    let savedInstrument = instrumentId
-                    let mappedRecipe = try service.map(intent)
-                    guard !Task.isCancelled else { return }
-                    mapped = mappedRecipe
-                    if newSeed {
-                        bgmTempo = savedTempo
-                        bgmPitch = savedPitch
-                        bgmRhythm = savedRhythm
-                        bgmMelody = savedMelody
-                        instrumentId = savedInstrument
-                    } else {
-                        syncFineTuneFromMapped(mappedRecipe)
-                    }
-                    // A newly mapped BGM has no buffer yet. Apply the visible
-                    // controls before the shared generation/playback path runs.
-                    applyCurrentBGMParamsToMapped()
+        if needsGenerate {
+            if soundType == .bgm {
+                // 別パターン must keep UI conditions; only seed changes.
+                let savedTempo = bgmTempo
+                let savedPitch = bgmPitch
+                let savedRhythm = bgmRhythm
+                let savedMelody = bgmMelody
+                let savedInstrument = instrumentId
+                let mappedRecipe = try service.map(intent)
+                try Task.checkCancellation()
+                mapped = mappedRecipe
+                if newSeed {
+                    bgmTempo = savedTempo
+                    bgmPitch = savedPitch
+                    bgmRhythm = savedRhythm
+                    bgmMelody = savedMelody
+                    instrumentId = savedInstrument
                 } else {
-                    let mappedRecipe = try service.map(intent)
-                    guard !Task.isCancelled else { return }
-                    mapped = mappedRecipe
-                    // Keep current slider values (mood/purpose already synced them when edited).
+                    syncFineTuneFromMapped(mappedRecipe)
                 }
-                catalogDirty = false
-            } else if soundType == .bgm {
+                // A newly mapped BGM has no buffer yet. Apply the visible
+                // controls before the shared generation/playback path runs.
                 applyCurrentBGMParamsToMapped()
+            } else {
+                let mappedRecipe = try service.map(intent)
+                try Task.checkCancellation()
+                mapped = mappedRecipe
+                // Keep current slider values (mood/purpose already synced them when edited).
             }
-            guard !Task.isCancelled else { return }
-            if soundType == .sfx {
-                applyCurrentSFXParamsToMapped()
-            }
-            guard let mapped else { throw AudioPlayerError.emptyBuffer }
-            try await generationViewModel.generateAndPlay(
-                recipe: mapped,
-                intent: intent,
-                loopEnabled: loopEnabled
-            )
-            let duration = mapped.durationSeconds
-            monitor.start(duration: duration, looping: loopEnabled)
-        } catch is CancellationError {
-            return
-        } catch {
-            errorText = error.localizedDescription
-            showError = true
+            catalogDirty = false
+        } else if soundType == .bgm {
+            applyCurrentBGMParamsToMapped()
         }
+        try Task.checkCancellation()
+        if soundType == .sfx {
+            applyCurrentSFXParamsToMapped()
+        }
+        guard let mapped else { throw AudioPlayerError.emptyBuffer }
+        try await generationViewModel.generateAndPlay(
+            recipe: mapped,
+            intent: intent,
+            loopEnabled: loopEnabled
+        )
+        monitor.start(duration: mapped.durationSeconds, looping: loopEnabled)
     }
 
     private func applyFineTuneAndPlay() {
@@ -1471,20 +1445,9 @@ struct StudioView: View {
         }
         mapped = current
         let intent = currentIntent()
-        playTask?.cancel()
-        playTask = Task { @MainActor in
-            let showOverlay = soundType == .bgm
-            let operationID = operationState.begin(
-                kind: .playback,
-                showsGeneratingOverlay: showOverlay
-            )
-            if showOverlay {
-                await Task.yield()
-            }
-            defer {
-                operationState.end(operationID)
-            }
-            do {
+        generationViewModel.startPlayback(
+            showsGeneratingOverlay: soundType == .bgm,
+            work: {
                 try await generationViewModel.generateAndPlay(
                     recipe: current,
                     intent: intent,
@@ -1494,14 +1457,9 @@ struct StudioView: View {
                     duration: current.durationSeconds,
                     looping: loopEnabled
                 )
-            } catch is CancellationError {
-                // A newer fine-tune / play request superseded this task.
-                return
-            } catch {
-                errorText = error.localizedDescription
-                showError = true
-            }
-        }
+            },
+            onError: presentError
+        )
     }
 
     private func exportAndShare() {
@@ -1584,6 +1542,11 @@ struct StudioView: View {
                 bgmSceneDefaultTempo = Double(recipe.params.tempoBpm)
             }
         }
+    }
+
+    private func presentError(_ error: Error) {
+        errorText = error.localizedDescription
+        showError = true
     }
 
     private func showToast(_ message: String) {
