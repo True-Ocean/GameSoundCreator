@@ -16,6 +16,21 @@ final class StudioGenerationViewModel {
         self.service = service
     }
 
+    func generateAndPlay(
+        recipe: MappedRecipe,
+        intent: SoundIntent,
+        loopEnabled: Bool
+    ) async throws {
+        switch recipe {
+        case .bgm:
+            _ = try await service.generateMappedAsync(recipe, intent: intent)
+        case .sfx:
+            _ = service.generate(mapped: recipe, intent: intent)
+        }
+        try Task.checkCancellation()
+        try service.playLast(loop: loopEnabled)
+    }
+
     func export(recipe: MappedRecipe, intent: SoundIntent) async throws -> URL {
         switch recipe {
         case .bgm:

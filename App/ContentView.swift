@@ -1223,10 +1223,13 @@ struct StudioView: View {
             }
             applyCurrentBGMParamsToMapped()
             if let mapped {
-                _ = try await service.generateMappedAsync(mapped, intent: intent)
+                try await generationViewModel.generateAndPlay(
+                    recipe: mapped,
+                    intent: intent,
+                    loopEnabled: loopEnabled
+                )
             }
             catalogDirty = false
-            try service.playLast(loop: loopEnabled)
             monitor.start(duration: mapped?.durationSeconds ?? 1, looping: loopEnabled)
         } catch is CancellationError {
             return
@@ -1408,13 +1411,10 @@ struct StudioView: View {
                         syncFineTuneFromMapped(mappedRecipe)
                     }
                     // A newly mapped BGM has no buffer yet. Apply the visible
-                    // controls, then synthesize exactly once before playLast().
+                    // controls before the shared generation/playback path runs.
                     applyCurrentBGMParamsToMapped()
-                    if let mapped {
-                        _ = try await service.generateMappedAsync(mapped, intent: intent)
-                    }
                 } else {
-                    let (mappedRecipe, _) = try service.generate(intent)
+                    let mappedRecipe = try service.map(intent)
                     guard !Task.isCancelled else { return }
                     mapped = mappedRecipe
                     // Keep current slider values (mood/purpose already synced them when edited).
@@ -1422,19 +1422,18 @@ struct StudioView: View {
                 catalogDirty = false
             } else if soundType == .bgm {
                 applyCurrentBGMParamsToMapped()
-                if let mapped {
-                    _ = try await service.generateMappedAsync(mapped, intent: intent)
-                }
             }
             guard !Task.isCancelled else { return }
             if soundType == .sfx {
                 applyCurrentSFXParamsToMapped()
-                if let mapped {
-                    _ = service.generate(mapped: mapped, intent: intent)
-                }
             }
-            try service.playLast(loop: loopEnabled)
-            let duration = mapped?.durationSeconds ?? 1
+            guard let mapped else { throw AudioPlayerError.emptyBuffer }
+            try await generationViewModel.generateAndPlay(
+                recipe: mapped,
+                intent: intent,
+                loopEnabled: loopEnabled
+            )
+            let duration = mapped.durationSeconds
             monitor.start(duration: duration, looping: loopEnabled)
         } catch is CancellationError {
             return
@@ -1486,13 +1485,11 @@ struct StudioView: View {
                 operationState.end(operationID)
             }
             do {
-                if soundType == .bgm {
-                    _ = try await service.generateMappedAsync(current, intent: intent)
-                } else {
-                    _ = service.generate(mapped: current, intent: intent)
-                }
-                guard !Task.isCancelled else { return }
-                try service.playLast(loop: loopEnabled)
+                try await generationViewModel.generateAndPlay(
+                    recipe: current,
+                    intent: intent,
+                    loopEnabled: loopEnabled
+                )
                 monitor.start(
                     duration: current.durationSeconds,
                     looping: loopEnabled
