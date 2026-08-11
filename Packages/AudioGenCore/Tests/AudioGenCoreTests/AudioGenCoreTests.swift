@@ -595,6 +595,29 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(Catalog.SFXPurpose.allCases.count, SFXCategory.allCases.count)
     }
 
+    func testNewSFXPurposesUseTheirDedicatedCategoriesAndGroups() {
+        let expected: [(Catalog.SFXPurpose, SFXCategory, String)] = [
+            (.uiWarning, .uiWarning, "UI・テキスト"),
+            (.uiError, .uiError, "UI・テキスト"),
+            (.uiUnlock, .uiUnlock, "UI・テキスト"),
+            (.uiText, .uiText, "UI・テキスト"),
+            (.rewardCoin, .rewardCoin, "報酬・成長"),
+            (.rewardChest, .rewardChest, "報酬・成長"),
+            (.rewardLevelUp, .rewardLevelUp, "報酬・成長"),
+            (.puzzleClear, .puzzleClear, "パズル・ミニゲーム"),
+            (.puzzleCombo, .puzzleCombo, "パズル・ミニゲーム"),
+            (.attackCritical, .attackCritical, "バトル"),
+            (.defendParry, .defendParry, "バトル"),
+            (.moveWarp, .moveWarp, "移動・フィールド"),
+        ]
+
+        for (purpose, category, group) in expected {
+            XCTAssertEqual(purpose.category, category)
+            XCTAssertEqual(purpose.group, group)
+            XCTAssertTrue(purpose.isAvailable)
+        }
+    }
+
     func testIntentMapperAcceptsRPGGenreAndNewScene() throws {
         let intent = SoundIntent(
             soundType: .bgm,
@@ -618,6 +641,10 @@ final class AudioGenCoreTests: XCTestCase {
             ("card_shuffle", "magic_fire"),
             ("attack_bash", "magic_ice"),
             ("move_walk", "ui_tap"),
+            ("reward_coin", "reward_chest"),
+            ("ui_warning", "ui_error"),
+            ("puzzle_combo", "attack_critical"),
+            ("defend_parry", "move_warp"),
         ]
         let engine = SFXEngine()
         let mapper = IntentMapper()

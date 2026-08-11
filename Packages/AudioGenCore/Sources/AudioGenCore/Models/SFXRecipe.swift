@@ -7,6 +7,10 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     case uiCancel = "sfx.ui.cancel"
     case uiBack = "sfx.ui.back"
     case uiSwipe = "sfx.ui.swipe"
+    case uiWarning = "sfx.ui.warning"
+    case uiError = "sfx.ui.error"
+    case uiUnlock = "sfx.ui.unlock"
+    case uiText = "sfx.ui.text"
 
     case cardDraw = "sfx.card.draw"
     case cardPlay = "sfx.card.play"
@@ -14,14 +18,23 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     case cardFlip = "sfx.card.flip"
     case cardDiscard = "sfx.card.discard"
 
+    case rewardCoin = "sfx.reward.coin"
+    case rewardChest = "sfx.reward.chest"
+    case rewardLevelUp = "sfx.reward.level_up"
+
+    case puzzleClear = "sfx.puzzle.clear"
+    case puzzleCombo = "sfx.puzzle.combo"
+
     case attackLight = "sfx.attack.light"
     case attackHeavy = "sfx.attack.heavy"
     case attackSlash = "sfx.attack.slash"
     case attackBash = "sfx.attack.bash"
     case attackBreak = "sfx.attack.break"
     case attackBow = "sfx.attack.bow"
+    case attackCritical = "sfx.attack.critical"
     case damageTake = "sfx.damage.take"
     case defend = "sfx.defend"
+    case defendParry = "sfx.defend.parry"
 
     case skillCast = "sfx.skill.cast"
     case magicFire = "sfx.magic.fire"
@@ -39,6 +52,7 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     case moveDash = "sfx.move.dash"
     case moveSwim = "sfx.move.swim"
     case moveDoor = "sfx.move.door"
+    case moveWarp = "sfx.move.warp"
 
     case gachaSpin = "sfx.gacha.spin"
     case gachaRare = "sfx.gacha.rare"
@@ -57,19 +71,30 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
         case .uiCancel: return "キャンセル"
         case .uiBack: return "戻る"
         case .uiSwipe: return "スワイプ"
+        case .uiWarning: return "警告・時間切れ"
+        case .uiError: return "エラー・禁止"
+        case .uiUnlock: return "ロック解除"
+        case .uiText: return "テキスト表示"
         case .cardDraw: return "カードドロー"
         case .cardPlay: return "カードプレイ"
         case .cardShuffle: return "シャッフル"
         case .cardFlip: return "めくる"
         case .cardDiscard: return "捨てる"
+        case .rewardCoin: return "コイン獲得"
+        case .rewardChest: return "宝箱開封"
+        case .rewardLevelUp: return "レベルアップ"
+        case .puzzleClear: return "パズル消去"
+        case .puzzleCombo: return "コンボ・連鎖"
         case .attackLight: return "通常攻撃"
         case .attackHeavy: return "強攻撃"
         case .attackSlash: return "斬る"
         case .attackBash: return "叩く"
         case .attackBreak: return "割る"
         case .attackBow: return "弓攻撃"
+        case .attackCritical: return "クリティカル"
         case .damageTake: return "被ダメージ"
         case .defend: return "防御"
+        case .defendParry: return "パリィ・回避"
         case .skillCast: return "スキル発動"
         case .magicFire: return "炎魔法"
         case .magicIce: return "氷魔法"
@@ -85,6 +110,7 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
         case .moveDash: return "ダッシュ"
         case .moveSwim: return "泳ぐ"
         case .moveDoor: return "扉を開く"
+        case .moveWarp: return "ワープ"
         case .gachaSpin: return "ガチャ回転"
         case .gachaRare: return "レア演出"
         case .victory: return "勝利"
@@ -97,20 +123,29 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
     /// Default length when recipe does not override meaningfully.
     public var defaultDurationMs: Int {
         switch self {
-        case .uiTap: return 80
+        case .uiTap, .uiText: return 80
         case .uiConfirm, .uiCancel, .uiBack: return 140
         case .uiSwipe: return 180
+        case .uiWarning: return 420
+        case .uiError, .uiUnlock: return 220
         case .cardDraw: return 280
         case .cardPlay, .cardFlip, .cardDiscard: return 220
         case .cardShuffle: return 420
+        case .rewardCoin: return 220
+        case .rewardChest: return 600
+        case .rewardLevelUp: return 700
+        case .puzzleClear: return 260
+        case .puzzleCombo: return 480
         case .attackLight: return 220
         case .attackSlash: return 280
         case .attackBash: return 280
         case .attackHeavy: return 480
         case .attackBreak: return 450
         case .attackBow: return 500
+        case .attackCritical: return 380
         case .damageTake: return 260
         case .defend: return 240
+        case .defendParry: return 260
         case .skillCast: return 400
         case .magicFire: return 520
         case .magicIce: return 560
@@ -126,6 +161,7 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
         case .moveDash: return 200
         case .moveSwim: return 420
         case .moveDoor: return 380
+        case .moveWarp: return 550
         case .gachaSpin: return 500
         case .gachaRare: return 650
         case .victory: return 680

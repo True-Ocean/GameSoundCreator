@@ -190,12 +190,23 @@ public enum Catalog {
         case uiCancel = "ui_cancel"
         case uiBack = "ui_back"
         case uiSwipe = "ui_swipe"
+        case uiWarning = "ui_warning"
+        case uiError = "ui_error"
+        case uiUnlock = "ui_unlock"
+        case uiText = "ui_text"
         // カード
         case cardDraw = "card_draw"
         case cardPlay = "card_play"
         case cardShuffle = "card_shuffle"
         case cardFlip = "card_flip"
         case cardDiscard = "card_discard"
+        // 報酬・成長
+        case rewardCoin = "reward_coin"
+        case rewardChest = "reward_chest"
+        case rewardLevelUp = "reward_level_up"
+        // パズル・ミニゲーム
+        case puzzleClear = "puzzle_clear"
+        case puzzleCombo = "puzzle_combo"
         // バトル
         case attackLight = "attack_light"
         case attackHeavy = "attack_heavy"
@@ -203,8 +214,10 @@ public enum Catalog {
         case attackBash = "attack_bash"
         case attackBreak = "attack_break"
         case attackBow = "attack_bow"
+        case attackCritical = "attack_critical"
         case damageTake = "damage_take"
         case defend = "defend"
+        case defendParry = "defend_parry"
         // 魔法・状態
         case skillCast = "skill_cast"
         case magicFire = "magic_fire"
@@ -222,6 +235,7 @@ public enum Catalog {
         case moveDash = "move_dash"
         case moveSwim = "move_swim"
         case moveDoor = "move_door"
+        case moveWarp = "move_warp"
         // ガチャ
         case gachaSpin = "gacha_spin"
         case gachaRare = "gacha_rare"
@@ -238,19 +252,30 @@ public enum Catalog {
             case .uiCancel: return "キャンセル"
             case .uiBack: return "戻る"
             case .uiSwipe: return "スワイプ"
+            case .uiWarning: return "警告・時間切れ"
+            case .uiError: return "エラー・禁止"
+            case .uiUnlock: return "ロック解除"
+            case .uiText: return "テキスト表示"
             case .cardDraw: return "ドロー"
             case .cardPlay: return "カードを出す"
             case .cardShuffle: return "シャッフル"
             case .cardFlip: return "めくる"
             case .cardDiscard: return "捨てる"
+            case .rewardCoin: return "コイン獲得"
+            case .rewardChest: return "宝箱開封"
+            case .rewardLevelUp: return "レベルアップ"
+            case .puzzleClear: return "パズル消去"
+            case .puzzleCombo: return "コンボ・連鎖"
             case .attackLight: return "通常攻撃"
             case .attackHeavy: return "強攻撃"
             case .attackSlash: return "斬る"
             case .attackBash: return "叩く"
             case .attackBreak: return "割る"
             case .attackBow: return "弓攻撃"
+            case .attackCritical: return "クリティカル"
             case .damageTake: return "被ダメージ"
             case .defend: return "防御"
+            case .defendParry: return "パリィ・回避"
             case .skillCast: return "スキル発動"
             case .magicFire: return "炎魔法"
             case .magicIce: return "氷魔法"
@@ -266,6 +291,7 @@ public enum Catalog {
             case .moveDash: return "ダッシュ"
             case .moveSwim: return "泳ぐ"
             case .moveDoor: return "扉を開く"
+            case .moveWarp: return "ワープ"
             case .gachaSpin: return "ガチャ回転"
             case .gachaRare: return "レア演出"
             case .victory: return "勝利"
@@ -277,15 +303,20 @@ public enum Catalog {
 
         public var group: String {
             switch self {
-            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe: return "UI"
+            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe,
+                 .uiWarning, .uiError, .uiUnlock, .uiText:
+                return "UI・テキスト"
             case .cardDraw, .cardPlay, .cardShuffle, .cardFlip, .cardDiscard: return "カード"
+            case .rewardCoin, .rewardChest, .rewardLevelUp: return "報酬・成長"
+            case .puzzleClear, .puzzleCombo: return "パズル・ミニゲーム"
             case .attackLight, .attackHeavy, .attackSlash, .attackBash, .attackBreak,
-                 .attackBow, .damageTake, .defend:
+                 .attackBow, .attackCritical, .damageTake, .defend, .defendParry:
                 return "バトル"
             case .skillCast, .magicFire, .magicIce, .magicPoison, .magicStorm, .magicBeam, .heal:
                 return "魔法・状態"
-            case .moveWalk, .moveRun, .moveFly, .moveJump, .moveLand, .moveDash, .moveSwim, .moveDoor:
-                return "動作"
+            case .moveWalk, .moveRun, .moveFly, .moveJump, .moveLand, .moveDash, .moveSwim, .moveDoor,
+                 .moveWarp:
+                return "移動・フィールド"
             case .gachaSpin, .gachaRare: return "ガチャ"
             case .victory, .defeat, .fanfareSting, .fanfareCorrect:
                 return "ファンファーレ"
@@ -296,11 +327,13 @@ public enum Catalog {
 
         public var defaultLength: SFXLength {
             switch self {
-            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe,
-                 .moveWalk, .moveRun, .moveJump, .moveLand, .moveDash:
+            case .uiTap, .uiConfirm, .uiCancel, .uiBack, .uiSwipe, .uiError, .uiUnlock, .uiText,
+                 .moveWalk, .moveRun, .moveJump, .moveLand, .moveDash, .puzzleClear, .attackCritical,
+                 .defendParry:
                 return .short
             case .victory, .defeat, .skillCast, .heal, .gachaRare, .magicFire, .magicIce,
-                 .magicStorm, .magicBeam, .attackHeavy, .fanfareSting:
+                 .magicStorm, .magicBeam, .attackHeavy, .fanfareSting, .rewardChest, .rewardLevelUp,
+                 .moveWarp:
                 return .long
             default:
                 return .medium
@@ -315,19 +348,30 @@ public enum Catalog {
             case .uiCancel: return .uiCancel
             case .uiBack: return .uiBack
             case .uiSwipe: return .uiSwipe
+            case .uiWarning: return .uiWarning
+            case .uiError: return .uiError
+            case .uiUnlock: return .uiUnlock
+            case .uiText: return .uiText
             case .cardDraw: return .cardDraw
             case .cardPlay: return .cardPlay
             case .cardShuffle: return .cardShuffle
             case .cardFlip: return .cardFlip
             case .cardDiscard: return .cardDiscard
+            case .rewardCoin: return .rewardCoin
+            case .rewardChest: return .rewardChest
+            case .rewardLevelUp: return .rewardLevelUp
+            case .puzzleClear: return .puzzleClear
+            case .puzzleCombo: return .puzzleCombo
             case .attackLight: return .attackLight
             case .attackHeavy: return .attackHeavy
             case .attackSlash: return .attackSlash
             case .attackBash: return .attackBash
             case .attackBreak: return .attackBreak
             case .attackBow: return .attackBow
+            case .attackCritical: return .attackCritical
             case .damageTake: return .damageTake
             case .defend: return .defend
+            case .defendParry: return .defendParry
             case .skillCast: return .skillCast
             case .magicFire: return .magicFire
             case .magicIce: return .magicIce
@@ -343,6 +387,7 @@ public enum Catalog {
             case .moveDash: return .moveDash
             case .moveSwim: return .moveSwim
             case .moveDoor: return .moveDoor
+            case .moveWarp: return .moveWarp
             case .gachaSpin: return .gachaSpin
             case .gachaRare: return .gachaRare
             case .victory: return .victory
@@ -551,7 +596,7 @@ public enum Catalog {
     }
 
     /// Stable order for SE purpose browsing.
-    public static let sfxPurposeGroupOrder = ["UI", "カード", "バトル", "魔法・状態", "動作", "ガチャ", "ファンファーレ"]
+    public static let sfxPurposeGroupOrder = ["UI・テキスト", "カード", "報酬・成長", "パズル・ミニゲーム", "バトル", "魔法・状態", "移動・フィールド", "ガチャ", "ファンファーレ"]
 
     public static func sfxPurposes(in group: String) -> [SFXPurpose] {
         SFXPurpose.allCases.filter { $0.isAvailable && $0.group == group }
