@@ -179,3 +179,9 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
 .actions-equal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 400px); }
 .actions-equal .button { width: 100%; flex: none; }
 @media (max-width: 360px) { .actions-equal { gap: 8px; } .actions-equal .button { min-height: 44px; padding-inline: 8px; font-size: .78rem; } }
+
+/* Persistent navigation */
+.site-shell { overflow: visible; }
+.site-header { position: sticky; top: 0; z-index: 20; background: rgba(18, 16, 14, .97); box-shadow: 0 8px 20px rgba(0, 0, 0, .22); }
+section[id] { scroll-margin-top: 140px; }
+.site-header { overflow: hidden; }
