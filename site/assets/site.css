@@ -185,3 +185,6 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
 .site-header { position: sticky; top: 0; z-index: 20; background: rgba(18, 16, 14, .97); box-shadow: 0 8px 20px rgba(0, 0, 0, .22); }
 section[id] { scroll-margin-top: 140px; }
 .site-header { overflow: hidden; }
+
+/* Match the Studio mobile header alignment. */
+@media (max-width: 720px) { .nav { align-items: center; justify-content: center; } .nav-links { justify-content: center; } .brand { padding-inline-end: 2.75rem; } }
