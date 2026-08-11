@@ -36,12 +36,15 @@ a { color: inherit; }
 
 .nav { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 
-.brand { display: inline-flex; align-items: center; gap: 11px; text-decoration: none; font-weight: 800; letter-spacing: .02em; }
+.brand { display: inline-flex; align-items: center; text-decoration: none; }
 
-.brand-mark {
-  width: 30px; height: 30px; border: 1px solid rgba(245, 239, 228, .42); border-radius: 50%;
-  background: #080808 url("chatnoir-studio-poster.png") center 78% / 145px auto no-repeat;
-  box-shadow: 0 0 0 3px rgba(232, 169, 56, .12);
+.brand-logo {
+  display: block; height: 112px; width: auto;
+  /* The banner art is surrounded by generous black padding, so the image is drawn
+     larger than the header while the negative margins keep its layout footprint at
+     ~44px. Screen blending makes the overflowing black completely invisible. */
+  margin-block: -34px;
+  mix-blend-mode: screen;
 }
 
 .nav-links { display: flex; gap: 20px; flex-wrap: wrap; font-size: .9rem; color: var(--muted); }
@@ -63,14 +66,9 @@ a { color: inherit; }
 .hero-content { position: relative; padding-block: 100px; max-width: 780px; }
 .hero-poster {
   position: absolute; z-index: -2; inset: 0 0 0 auto; width: min(40vw, 520px); opacity: .78;
-  background: linear-gradient(90deg, var(--ink), transparent 34%, rgba(18, 16, 14, .16)), linear-gradient(0deg, var(--ink), transparent 34%), url("chatnoir-studio-poster.png") center 38% / cover no-repeat;
+  background: linear-gradient(90deg, var(--ink), transparent 34%, rgba(18, 16, 14, .16)), linear-gradient(0deg, var(--ink), transparent 34%), url("chatnoir-poster-figure.png") center 22% / cover no-repeat;
   filter: grayscale(1) contrast(1.08);
   mask-image: linear-gradient(to right, transparent, black 34%);
-}
-.studio-signature {
-  width: min(100%, 380px); height: 92px; margin-top: 24px; opacity: .88;
-  background: url("chatnoir-studio-poster.png") center 78% / 100% auto no-repeat;
-  filter: grayscale(1) contrast(1.15);
 }
 .eyebrow { color: var(--amber-bright); font-size: .8rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 h1, h2, h3, p { margin-top: 0; }
@@ -117,10 +115,10 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
 @media (max-width: 720px) {
   .container { width: min(100% - 30px, 1120px); }
   .nav { padding-block: 14px; align-items: flex-start; flex-direction: column; gap: 10px; }
+  .brand-logo { height: 84px; margin-block: -26px; }
   .nav-links { gap: 14px; }
   .hero { min-height: 540px; }
   .hero-poster { width: 66vw; opacity: .4; }
-  .studio-signature { width: 300px; height: 73px; }
   .hero-content { padding-block: 74px; }
   .section { padding-block: 64px; }
   .feature-grid, .steps { grid-template-columns: 1fr; }
