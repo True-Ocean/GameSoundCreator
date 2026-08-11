@@ -123,3 +123,50 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
   .section { padding-block: 64px; }
   .feature-grid, .steps { grid-template-columns: 1fr; }
 }
+
+/* Retro Sound application identity: lime, amber, cyan, and magenta. */
+
+/* The product icon replaces the studio illustration in the Retro Sound hero. */
+.hero-poster { display: none; }
+.hero-content { z-index: 1; }
+.hero-app-icon { position: absolute; z-index: 0; top: 50%; right: max(8vw, 60px); width: min(34vw, 460px); transform: translateY(-50%) rotate(-5deg); pointer-events: none; }
+.hero-app-icon::before { content: ""; position: absolute; z-index: -1; inset: 8%; border-radius: 28%; background: linear-gradient(135deg, var(--lime), var(--amber), var(--cyan), var(--magenta)); filter: blur(42px); opacity: .38; }
+.hero-app-icon img { display: block; width: 100%; height: auto; border-radius: 23%; box-shadow: 0 30px 70px rgba(0,0,0,.48), 0 0 0 1px rgba(245,239,228,.17); }
+@media (max-width: 720px) { .hero-app-icon { right: -13vw; width: min(68vw, 320px); opacity: .46; transform: translateY(-48%) rotate(-5deg); } }
+
+.hero-app-icon::before { background: linear-gradient(135deg, var(--lime), var(--amber)); }
+.retro-title { margin: 0 0 27px; font: 800 clamp(1.7rem, 3.6vw, 2.4rem)/1.15 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; letter-spacing: .08em; background: linear-gradient(100deg, var(--paper) 0%, var(--amber-bright) 50%, var(--lime) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 5px 14px rgba(232,169,56,.18)); }
+@media (max-width: 720px) { .retro-title { margin-bottom: 23px; font-size: 1.55rem; } }
+
+/* Retro Sound: vivid four-color application theme. */
+:root { --cyan: #56c7e9; --magenta: #e96dbd; }
+.hero { background: radial-gradient(circle at 78% 28%, rgba(232,169,56,.32), transparent 29%), radial-gradient(circle at 18% 88%, rgba(185,228,83,.22), transparent 24%), radial-gradient(circle at 60% 80%, rgba(86,199,233,.17), transparent 25%), radial-gradient(circle at 88% 80%, rgba(233,109,189,.16), transparent 22%); }
+.hero h1 span { background: linear-gradient(90deg, var(--lime), var(--amber), var(--cyan), var(--magenta)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-app-icon::before { background: linear-gradient(135deg, var(--lime), var(--amber), var(--cyan), var(--magenta)); opacity: .46; }
+.nav-links a:hover { color: var(--cyan); }
+.button { border-color: var(--amber); background: linear-gradient(100deg, var(--lime), var(--amber)); }
+.button:hover { background: linear-gradient(100deg, var(--amber), var(--cyan)); }
+.button-secondary:hover { color: var(--cyan); border-color: var(--cyan); background: transparent; }
+.feature { position: relative; overflow: hidden; }
+.feature::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--amber); }
+.feature:nth-child(1)::before { background: var(--lime); } .feature:nth-child(2)::before { background: var(--amber); } .feature:nth-child(3)::before { background: var(--cyan); }
+.feature:nth-child(1) .feature-number { color: var(--lime); } .feature:nth-child(2) .feature-number { color: var(--amber); } .feature:nth-child(3) .feature-number { color: var(--cyan); }
+.step:nth-child(1)::before { color: var(--lime); } .step:nth-child(2)::before { color: var(--amber); } .step:nth-child(3)::before { color: var(--magenta); }
+.section-alt { background: linear-gradient(110deg, var(--surface), #15191c); }
+.notice { border-left-color: var(--cyan); background: rgba(86,199,233,.09); } .support-card { border-color: var(--magenta); background: rgba(233,109,189,.08); }
+.footer-links a:hover { color: var(--magenta); }
+.retro-title { margin: 0 0 27px; font-size: clamp(1.85rem, 4vw, 2.7rem); background: linear-gradient(100deg, var(--lime) 0%, var(--amber) 32%, var(--cyan) 68%, var(--magenta) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 5px 15px rgba(232,169,56,.2)); }
+@media (max-width: 720px) { .retro-title { margin-bottom: 23px; font-size: 1.7rem; } }
+
+/* Lime leads titles and calls to action; lower content uses the remaining three themes. */
+.hero h1 span { background: linear-gradient(100deg, var(--lime), #e3f48c, var(--lime)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.retro-title { background: linear-gradient(100deg, var(--lime), #e7f69a, var(--lime)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 5px 15px rgba(185,228,83,.24)); }
+.button { color: #10180f; border-color: var(--lime); background: var(--lime); }
+.button:hover { color: #10180f; background: #d9f07a; }
+.button-secondary { color: var(--lime); border-color: var(--lime); background: transparent; }
+.button-secondary:hover { color: var(--cyan); border-color: var(--cyan); background: transparent; }
+.feature:nth-child(1)::before { background: var(--amber); } .feature:nth-child(2)::before { background: var(--cyan); } .feature:nth-child(3)::before { background: var(--magenta); }
+.feature:nth-child(1) .feature-number { color: var(--amber); } .feature:nth-child(2) .feature-number { color: var(--cyan); } .feature:nth-child(3) .feature-number { color: var(--magenta); }
+.step:nth-child(1)::before { color: var(--amber); } .step:nth-child(2)::before { color: var(--cyan); } .step:nth-child(3)::before { color: var(--magenta); }
+.actions-equal .button { flex: 0 0 220px; }
+@media (max-width: 720px) { .actions-equal .button { flex-basis: 100%; } }
