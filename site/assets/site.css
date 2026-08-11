@@ -170,3 +170,12 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
 .step:nth-child(1)::before { color: var(--amber); } .step:nth-child(2)::before { color: var(--cyan); } .step:nth-child(3)::before { color: var(--magenta); }
 .actions-equal .button { flex: 0 0 220px; }
 @media (max-width: 720px) { .actions-equal .button { flex-basis: 100%; } }
+.actions-equal .button { flex-basis: 260px; white-space: nowrap; }
+@media (max-width: 720px) { .actions-equal .button { flex-basis: 100%; } }
+.actions-equal .button { flex: 0 0 180px; white-space: nowrap; }
+@media (max-width: 720px) { .actions-equal .button { flex: 0 0 160px; } }
+
+/* Equal-width legal buttons: grid columns stay identical at every viewport. */
+.actions-equal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 400px); }
+.actions-equal .button { width: 100%; flex: none; }
+@media (max-width: 360px) { .actions-equal { gap: 8px; } .actions-equal .button { min-height: 44px; padding-inline: 8px; font-size: .78rem; } }
