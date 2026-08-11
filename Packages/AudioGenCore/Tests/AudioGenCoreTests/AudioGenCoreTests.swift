@@ -696,10 +696,13 @@ final class AudioGenCoreTests: XCTestCase {
 
     func testMelodyComposerRepeatsMotifRhythmInLoop() {
         let progression = [0, 5, 2, 6]
+        // density > 0.72 forces two-bar motif cycles regardless of which motif
+        // family the seed picks, so the loop-repetition property stays testable
+        // even as the motif dictionary gains four-bar templates.
         let plan = MelodyComposer.compose(
             bars: 4,
             progression: progression,
-            density: 0.7,
+            density: 0.75,
             moodId: "neutral",
             melodyEnabled: true,
             melodyChanceScale: 1.15,
@@ -1239,27 +1242,40 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertTrue(hasEnergy(a))
     }
 
+    /// Deliberately a synchronous test. In environments without audio output access
+    /// (sandboxed CI), AVAudioPlayerNode's init (GenerationService → BufferAudioPlayer)
+    /// raises an ObjC exception; unwinding it through an async test method corrupts
+    /// the Swift task allocator ("freed pointer was not the last allocation") and
+    /// aborts the whole test process, silently skipping every later test. Keeping the
+    /// method synchronous turns that abort into an ordinary, isolated test failure.
     @MainActor
-    func testNewerGenerationWinsWhenOlderBackgroundSynthesisCompletes() async throws {
+    func testNewerGenerationWinsWhenOlderBackgroundSynthesisCompletes() {
         let service = GenerationService()
         var slowRecipe = BGMPreset.battleNormal.makeRecipe(seed: 31)
         slowRecipe.params.bars = 32
         let old = MappedRecipe.bgm(slowRecipe)
         let latest = MappedRecipe.sfx(SFXRecipe.make(category: .uiConfirm, seed: 99))
 
-        let oldTask: Task<Void, Error> = Task { @MainActor in
-            _ = try await service.generateMappedAsync(old)
+        let oldReserved = expectation(description: "old generation reserved its request")
+        let oldFinished = expectation(description: "old generation was superseded")
+        Task { @MainActor in
+            // Runs on the main actor: everything up to the first suspension inside
+            // generateMappedAsync (request reservation included) completes before
+            // control returns to the test's run loop.
+            oldReserved.fulfill()
+            do {
+                _ = try await service.generateMappedAsync(old)
+                XCTFail("A superseded generation must not publish a result")
+            } catch is CancellationError {
+                // Expected: the newer synchronous request owns the service state.
+            } catch {
+                XCTFail("unexpected error: \(error)")
+            }
+            oldFinished.fulfill()
         }
-        // Let the old task reserve a generation request and enter its background work.
-        await Task.yield()
+        wait(for: [oldReserved], timeout: 10)
         _ = service.generate(mapped: latest)
-
-        do {
-            _ = try await oldTask.value
-            XCTFail("A superseded generation must not publish a result")
-        } catch is CancellationError {
-            // Expected: the newer synchronous request owns the service state.
-        }
+        wait(for: [oldFinished], timeout: 60)
 
         XCTAssertEqual(service.lastMapped, latest)
         XCTAssertEqual(service.lastIntent, nil)
