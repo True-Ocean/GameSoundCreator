@@ -230,6 +230,27 @@ public final class GenerationService {
         return next
     }
 
+    /// Keeps the studio UI settings intact while selecting a BGM seed whose
+    /// harmony, motif, and accompaniment profile is furthest from the current one.
+    public func withDistinctBGMSeed(_ intent: SoundIntent, avoiding current: BGMRecipe?) -> SoundIntent {
+        guard intent.soundType == .bgm, let current else {
+            return withNewSeed(intent)
+        }
+
+        var candidates = Set<UInt64>()
+        while candidates.count < 12 {
+            let candidate = UInt64.random(in: 1...999_999)
+            if candidate != current.params.seed {
+                candidates.insert(candidate)
+            }
+        }
+
+        var next = intent
+        next.seed = bgmEngine.distinctSeed(from: Array(candidates), comparedTo: current)
+            ?? UInt64.random(in: 1...999_999)
+        return next
+    }
+
     private func activatePlaybackSession() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()

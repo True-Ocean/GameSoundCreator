@@ -85,6 +85,24 @@ SPEC §10 / ROADMAP Phase 5 の推奨順:
 
 **課金ゲートは App 層のみ。** Intent Mapper / AudioGenCore は課金を知らないこと。
 
+#### 初回公開版の決定（2026-08-11）
+
+| 項目 | 決定 |
+|------|------|
+| 配信モデル | 無料版 + 買い切り Pro（広告なし） |
+| 無料版のライブラリ保存 | 最大 10 件 |
+| 無料版の WAV 書き出し・共有 | 1 日 3 回まで |
+| Pro | ライブラリ保存・WAV 書き出し・共有を無制限にする。基準価格は日本で ¥160 前後（App Store Connect で選択できる最も近い現行価格帯） |
+| 購入復元 | 実装する |
+| 試聴・生成 | 無料版でも無制限 |
+| 初回公開バージョン | `1.0.0` |
+| App Store 上のアプリ名 | レトロサウンド - ゲームBGM・効果音 |
+| 端末上の表示名 | レトロサウンド |
+| アプリ内のブランド・著作権表記 | © 2026 ChatNoir Studio |
+| App Store の販売元 | 個人登録の法的氏名（ローマ字表記） |
+| 対応端末 | iPhone のみ（縦向き） |
+| ストア掲載言語 | 日本語のみ |
+
 ### 3.2 その他の決定事項
 
 - [ ] 無料枠の具体値（例: 書き出し 1日 3 回）
@@ -99,6 +117,8 @@ SPEC §10 / ROADMAP Phase 5 の推奨順:
 ---
 
 ## 4. Step 2 — アカウント・費用
+
+進捗（2026-08-11）: 個人としてApple Developer Programへ登録申請済み。Appleによる承認メール待ち。
 
 - [ ] [Apple Developer Program](https://developer.apple.com/programs/) に加入（年額・公開と本格 TestFlight に必須）
 - [ ] Xcode → Signing & Capabilities で Team を有料アカウントに切替

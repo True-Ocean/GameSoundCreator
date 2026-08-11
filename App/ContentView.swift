@@ -1366,7 +1366,13 @@ struct StudioView: View {
 
     private func playNowAsync(newSeed: Bool) async throws {
         if newSeed {
-            seed = UInt64.random(in: 1...999_999)
+            let currentBGM: BGMRecipe?
+            if case .bgm(let recipe) = mapped {
+                currentBGM = recipe
+            } else {
+                currentBGM = nil
+            }
+            seed = service.withDistinctBGMSeed(currentIntent(), avoiding: currentBGM).seed ?? seed
             catalogDirty = true
         }
         let intent = currentIntent()

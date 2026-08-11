@@ -97,9 +97,15 @@ public enum MelodyComposer {
         melodyEnabled: Bool,
         melodyChanceScale: Float,
         seed: UInt64,
-        sceneBias: MotifSceneBias = .general
+        sceneBias: MotifSceneBias = .general,
+        style: BGMCompositionStyle? = nil
     ) -> MelodyPlan {
-        let form = MelodyForm.forBarCount(bars)
+        let naturalForm = MelodyForm.forBarCount(bars)
+        // Even the shortest BGM can become a clear question/answer rather than
+        // repeating a two-bar idea when that composition style is selected.
+        let form: MelodyForm = style == .questionAnswer && bars >= 4
+            ? .statementResponse
+            : naturalForm
         guard melodyEnabled, bars > 0, !progression.isEmpty else {
             return MelodyPlan(rhythmId: 0, contourId: 0, motifBars: 2, form: form, notes: [])
         }
@@ -110,10 +116,15 @@ public enum MelodyComposer {
         let dictionary = motifDictionary(for: mood, density: density, sceneBias: sceneBias)
         let startPool = startDegreePool(for: mood)
 
-        // Seed picks a motif *family*; steps 2–3 rules render inside the family.
-        let familyA = Int(mix(seed, salt: 1) % UInt64(dictionary.count))
-        let familyB = (familyA + 1 + Int(mix(seed, salt: 5) % UInt64(max(1, dictionary.count - 1))))
-            % dictionary.count
+        // A composition style selects a distinct subset before the seed chooses
+        // a motif family. This changes the audible opening, not just its details.
+        let familyPool = style.map { motifFamilyIndices(for: $0, dictionaryCount: dictionary.count) }
+            ?? Array(0..<dictionary.count)
+        let familyA = familyPool[Int(mix(seed, salt: 1) % UInt64(familyPool.count))]
+        let remainingFamilies = familyPool.filter { $0 != familyA }
+        let familyB = remainingFamilies.isEmpty
+            ? familyA
+            : remainingFamilies[Int(mix(seed, salt: 5) % UInt64(remainingFamilies.count))]
         let templateA = dictionary[familyA]
         let templateB = dictionary[familyB]
 
@@ -131,7 +142,16 @@ public enum MelodyComposer {
         let startIdx = startPool.firstIndex(of: startDegree) ?? 0
         let startDegreeB = templateB.preferredStart
             ?? startPool[(startIdx + 2) % startPool.count]
-        let keepChance = min(0.98, max(0.25, melodyChanceScale * (0.45 + 0.55 * density)))
+        let baseKeepChance = min(0.98, max(0.25, melodyChanceScale * (0.45 + 0.55 * density)))
+        let keepChance: Float
+        switch style {
+        case .spacious?:
+            keepChance = min(baseKeepChance, 0.62)
+        case .riff?:
+            keepChance = max(baseKeepChance, 0.88)
+        case .hook?, .questionAnswer?, .syncopated?, nil:
+            keepChance = baseKeepChance
+        }
 
         let contourA = contourShape(templateA.contour, length: max(4, templateA.rhythm.count * motifBars), mood: mood)
         let motifA = buildMotif(
@@ -160,6 +180,7 @@ public enum MelodyComposer {
 
         var notes: [MelodyNote] = []
         notes.reserveCapacity(bars * max(1, motifA.count / max(1, motifBars)))
+        var previousDegree: Int?
 
         for bar in 0..<bars {
             let chordDegree = progression[bar % progression.count]
@@ -174,7 +195,9 @@ public enum MelodyComposer {
                 mood: mood
             )
 
-            for event in events {
+            let isLastBarInSection = bar == bars - 1
+                || form.sectionIndex(bar: bar + 1, totalBars: bars) != section
+            for (eventIndex, event) in events.enumerated() {
                 if thinChance > 0, event.step != 0, rng.unit() < thinChance { continue }
                 var rel = sanitizeRelative(event.rel + degreeBias, mood: mood)
                 // Keep intentional openings; only gently snap later strong beats.
@@ -182,15 +205,24 @@ public enum MelodyComposer {
                 if event.step % 4 == 0, !isOpening {
                     rel = preferChordTone(rel, strongBeat: true, mood: mood)
                 }
+                let degree = smoothPhraseDegree(
+                    target: chordDegree + rel,
+                    previous: previousDegree,
+                    chordDegree: chordDegree,
+                    strongBeat: event.step % 4 == 0,
+                    phraseEnding: isLastBarInSection && eventIndex == events.count - 1,
+                    mood: mood
+                )
                 notes.append(
                     MelodyNote(
                         bar: bar,
                         step: event.step,
-                        degree: chordDegree + rel,
+                        degree: degree,
                         durationSteps: event.duration,
                         velocity: min(1, max(0.2, event.velocity * velocityScale))
                     )
                 )
+                previousDegree = degree
             }
         }
 
@@ -283,6 +315,49 @@ public enum MelodyComposer {
             default: // 結 — thinned A return
                 return (motifA.filter { $0.barOffset == barOffset }, 0, 0.88, 0.35)
             }
+        }
+    }
+
+    /// Applies voice leading after chord-relative motif rendering. This is where
+    /// a musically valid motif becomes a singable phrase across chord changes.
+    private static func smoothPhraseDegree(
+        target: Int,
+        previous: Int?,
+        chordDegree: Int,
+        strongBeat: Bool,
+        phraseEnding: Bool,
+        mood: Catalog.Mood
+    ) -> Int {
+        guard let previous else { return target }
+        let maxStep = mood == .tense && !phraseEnding ? 3 : 2
+
+        if phraseEnding {
+            let landing = nearestStableChordTone(to: previous, chordDegree: chordDegree)
+            if abs(landing - previous) <= maxStep { return landing }
+            return previous + (landing > previous ? maxStep : -maxStep)
+        }
+
+        let anchoredTarget = strongBeat
+            ? nearestChordTone(to: target, chordDegree: chordDegree)
+            : target
+        let delta = anchoredTarget - previous
+        guard abs(delta) > maxStep else { return anchoredTarget }
+        return previous + (delta > 0 ? maxStep : -maxStep)
+    }
+
+    private static func nearestChordTone(to degree: Int, chordDegree: Int) -> Int {
+        chordToneCandidates(chordDegree: chordDegree, tones: [0, 2, 4])
+            .min(by: { abs($0 - degree) < abs($1 - degree) }) ?? degree
+    }
+
+    private static func nearestStableChordTone(to degree: Int, chordDegree: Int) -> Int {
+        chordToneCandidates(chordDegree: chordDegree, tones: [0, 2])
+            .min(by: { abs($0 - degree) < abs($1 - degree) }) ?? degree
+    }
+
+    private static func chordToneCandidates(chordDegree: Int, tones: [Int]) -> [Int] {
+        (-2...2).flatMap { octave in
+            tones.map { chordDegree + $0 + octave * 7 }
         }
     }
 
@@ -486,6 +561,22 @@ public enum MelodyComposer {
         return templates
     }
 
+    private static func motifFamilyIndices(
+        for style: BGMCompositionStyle,
+        dictionaryCount: Int
+    ) -> [Int] {
+        let preferred: [Int]
+        switch style {
+        case .hook: preferred = [0, 5]
+        case .questionAnswer: preferred = [1, 2, 7]
+        case .syncopated: preferred = [2, 4, 6]
+        case .spacious: preferred = [3, 7]
+        case .riff: preferred = [0, 4, 5, 6]
+        }
+        let available = preferred.filter { $0 < dictionaryCount }
+        return available.isEmpty ? Array(0..<dictionaryCount) : available
+    }
+
     private static func moodMotifTemplates(_ mood: Catalog.Mood, density: Float) -> [MotifTemplate] {
         // Shared rhythm skeletons
         let even = [
@@ -516,6 +607,16 @@ public enum MelodyComposer {
             RhythmHit(step: 0, duration: 2), RhythmHit(step: 2, duration: 2),
             RhythmHit(step: 4, duration: 2), RhythmHit(step: 8, duration: 4),
         ]
+        let tresillo = [
+            RhythmHit(step: 0, duration: 2), RhythmHit(step: 3, duration: 2),
+            RhythmHit(step: 6, duration: 2), RhythmHit(step: 8, duration: 2),
+            RhythmHit(step: 11, duration: 1), RhythmHit(step: 14, duration: 2),
+        ]
+        let answer = [
+            RhythmHit(step: 0, duration: 3), RhythmHit(step: 5, duration: 1),
+            RhythmHit(step: 7, duration: 2), RhythmHit(step: 10, duration: 1),
+            RhythmHit(step: 12, duration: 3),
+        ]
 
         let preferDense = density > 0.55
         switch mood {
@@ -527,6 +628,8 @@ public enum MelodyComposer {
                 MotifTemplate(rhythm: even, contour: .arch, preferredStart: 0, motifBars: preferDense ? 2 : 4, energy: 1),
                 MotifTemplate(rhythm: offbeat, contour: .neighborDip, preferredStart: 2, motifBars: 2, energy: 2),
                 MotifTemplate(rhythm: callDrop, contour: .leapResolve, preferredStart: 0, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: tresillo, contour: .highLanding, preferredStart: 2, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: answer, contour: .questionAnswer, preferredStart: 0, motifBars: 4, energy: 1),
             ]
         case .dark:
             return [
@@ -536,6 +639,8 @@ public enum MelodyComposer {
                 MotifTemplate(rhythm: sparse, contour: .highLanding, preferredStart: -3, motifBars: 2, energy: 0),
                 MotifTemplate(rhythm: callDrop, contour: .riseFall, preferredStart: 0, motifBars: 2, energy: 1),
                 MotifTemplate(rhythm: late, contour: .questionAnswer, preferredStart: 2, motifBars: 4, energy: 0),
+                MotifTemplate(rhythm: answer, contour: .neighborDip, preferredStart: -3, motifBars: 4, energy: 0),
+                MotifTemplate(rhythm: tresillo, contour: .plunge, preferredStart: 0, motifBars: 2, energy: 1),
             ]
         case .tense:
             return [
@@ -545,6 +650,8 @@ public enum MelodyComposer {
                 MotifTemplate(rhythm: syncopated, contour: .highLanding, preferredStart: 4, motifBars: 2, energy: 2),
                 MotifTemplate(rhythm: busy, contour: .questionAnswer, preferredStart: -1, motifBars: 2, energy: 2),
                 MotifTemplate(rhythm: even, contour: .riseFall, preferredStart: 0, motifBars: preferDense ? 2 : 4, energy: 1),
+                MotifTemplate(rhythm: tresillo, contour: .zigzag, preferredStart: 4, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: answer, contour: .leapResolve, preferredStart: 0, motifBars: 2, energy: 2),
             ]
         case .neutral:
             return [
@@ -554,6 +661,8 @@ public enum MelodyComposer {
                 MotifTemplate(rhythm: sparse, contour: .neighborDip, preferredStart: 0, motifBars: 4, energy: 0),
                 MotifTemplate(rhythm: even, contour: .stepwiseClimb, preferredStart: 2, motifBars: preferDense ? 2 : 4, energy: 1),
                 MotifTemplate(rhythm: offbeat, contour: .fallRise, preferredStart: 4, motifBars: 2, energy: 1),
+                MotifTemplate(rhythm: tresillo, contour: .zigzag, preferredStart: 0, motifBars: 2, energy: 2),
+                MotifTemplate(rhythm: answer, contour: .leapResolve, preferredStart: 2, motifBars: 4, energy: 1),
             ]
         }
     }

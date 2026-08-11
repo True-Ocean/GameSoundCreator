@@ -788,9 +788,113 @@ final class AudioGenCoreTests: XCTestCase {
             melodyEnabled: true, melodyChanceScale: 1, seed: seed, sceneBias: .general
         )
         XCTAssertNotEqual(bright.notes, dark.notes)
-        // Family indices stay in dictionary range (6 templates).
-        XCTAssertLessThan(bright.rhythmId, 6)
-        XCTAssertLessThan(dark.rhythmId, 6)
+        // Family indices stay in dictionary range (8 templates).
+        XCTAssertLessThan(bright.rhythmId, 8)
+        XCTAssertLessThan(dark.rhythmId, 8)
+    }
+
+    func testBGMVariationProfilesExploreScaleAndPhraseStructure() {
+        let engine = BGMEngine()
+        let signatures = (1...64).map { seed in
+            engine.variationSignature(for: BGMPreset.menuMain.makeRecipe(seed: UInt64(seed)))
+        }
+
+        XCTAssertGreaterThan(Set(signatures.map(\.mode)).count, 1)
+        XCTAssertGreaterThan(Set(signatures.map(\.progression)).count, 8)
+        let phraseProfiles = Set(signatures.map {
+            "\($0.melodyRhythmID)-\($0.melodyContourID)-\($0.motifBars)"
+        })
+        XCTAssertGreaterThan(phraseProfiles.count, 14)
+        XCTAssertGreaterThan(Set(signatures.map(\.compositionStyle)).count, 4)
+    }
+
+    func testCompositionStylesChangeShortBGMPhraseAndHarmony() {
+        let seed: UInt64 = 314
+        let baseProgression = MusicTheory.progression(
+            for: .menuMain, moodId: "neutral", pick: 9, style: .hook
+        )
+        let progressions = BGMCompositionStyle.allCases.map { style in
+            MusicTheory.progression(for: .menuMain, moodId: "neutral", pick: 9, style: style)
+        }
+        XCTAssertEqual(Set(progressions).count, BGMCompositionStyle.allCases.count)
+
+        let questionAnswer = MelodyComposer.compose(
+            bars: 4,
+            progression: baseProgression,
+            density: 0.6,
+            moodId: "neutral",
+            melodyEnabled: true,
+            melodyChanceScale: 1,
+            seed: seed,
+            style: .questionAnswer
+        )
+        XCTAssertEqual(questionAnswer.form, .statementResponse)
+        let opening = questionAnswer.notes.filter { $0.bar == 0 }.map(\.step)
+        let response = questionAnswer.notes.filter { $0.bar == 2 }.map(\.step)
+        XCTAssertFalse(opening.isEmpty)
+        XCTAssertNotEqual(opening, response)
+    }
+
+    func testNegativeScaleDegreeStaysBelowTheTonic() {
+        let belowTonic = MusicTheory.midi(root: 0, degree: -1, octave: 5, mode: .major)
+        let leadingToneBelow = MusicTheory.midi(root: 0, degree: 6, octave: 4, mode: .major)
+        XCTAssertEqual(belowTonic, leadingToneBelow)
+    }
+
+    func testVariationModesStayWithinStablePalette() {
+        let modes = (1...64).map { seed in
+            MusicTheory.variationMode(base: .major, moodId: "neutral", seed: UInt64(seed))
+        }
+        XCTAssertTrue(modes.allSatisfy { $0 == .major || $0 == .mixolydian })
+        XCTAssertTrue(modes.contains(.major))
+        XCTAssertTrue(modes.contains(.mixolydian))
+    }
+
+    func testPhraseVoiceLeadingLimitsIntervalsAndEndsOnStableTone() {
+        let progression = [0, 5, 2, 6]
+        for seed in 1...24 {
+            let plan = MelodyComposer.compose(
+                bars: 8,
+                progression: progression,
+                density: 0.9,
+                moodId: "neutral",
+                melodyEnabled: true,
+                melodyChanceScale: 1.2,
+                seed: UInt64(seed),
+                style: .questionAnswer
+            )
+            let ordered = plan.notes.sorted { ($0.bar, $0.step) < ($1.bar, $1.step) }
+            XCTAssertGreaterThan(ordered.count, 2)
+            for index in 1..<ordered.count {
+                XCTAssertLessThanOrEqual(abs(ordered[index].degree - ordered[index - 1].degree), 3)
+            }
+            guard let ending = ordered.last else { return XCTFail("missing phrase ending") }
+            let chordDegree = progression[ending.bar % progression.count]
+            let relative = ((ending.degree - chordDegree) % 7 + 7) % 7
+            XCTAssertTrue([0, 2].contains(relative), "seed \(seed) did not end on root or third")
+        }
+    }
+
+    func testDistinctSeedSelectsTheMostDistantStructuralCandidate() throws {
+        let engine = BGMEngine()
+        let current = BGMPreset.battleNormal.makeRecipe(seed: 42)
+        let candidates = (1...32).map(UInt64.init)
+        let selected = try XCTUnwrap(engine.distinctSeed(from: candidates, comparedTo: current))
+
+        var selectedRecipe = current
+        selectedRecipe.params.seed = selected
+        let selectedDistance = engine.structuralDistance(between: current, and: selectedRecipe)
+        let bestDistance = candidates.map { seed -> Int in
+            var candidate = current
+            candidate.params.seed = seed
+            return engine.structuralDistance(between: current, and: candidate)
+        }.max()
+        XCTAssertEqual(selectedDistance, bestDistance)
+        XCTAssertGreaterThanOrEqual(selectedDistance, 12)
+        XCTAssertNotEqual(
+            engine.variationSignature(for: current).compositionStyle,
+            engine.variationSignature(for: selectedRecipe).compositionStyle
+        )
     }
 
     func testSceneBiasCanChangeMotifFamilyOrdering() {

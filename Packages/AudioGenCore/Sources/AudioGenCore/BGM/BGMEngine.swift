@@ -1,8 +1,99 @@
 import AVFoundation
 import Foundation
 
+/// Structural choices that determine how a BGM feels before timbre and DSP are applied.
+/// This intentionally excludes root transposition so a mere key change cannot be treated
+/// as a meaningfully different pattern.
+public struct BGMVariationSignature: Equatable, Sendable {
+    public let compositionStyle: BGMCompositionStyle
+    public let mode: MusicalMode
+    public let progression: [Int]
+    public let melodyRhythmID: Int
+    public let melodyContourID: Int
+    public let motifBars: Int
+    public let kickPatternID: Int
+    public let snarePatternID: Int
+    public let bassPatternID: Int
+}
+
 public struct BGMEngine: Sendable {
     public init() {}
+
+    /// Returns the structural profile for a recipe without rendering audio.
+    public func variationSignature(for recipe: BGMRecipe) -> BGMVariationSignature {
+        let bars = max(4, (recipe.params.bars / 4) * 4)
+        let progressionPick = Int((recipe.params.seed &* 0x9E37_79B9) >> 17) % 128
+        let compositionStyle = MusicTheory.compositionStyle(
+            moodId: recipe.params.moodId,
+            seed: recipe.params.seed
+        )
+        let progression = MusicTheory.progression(
+            for: recipe.preset,
+            moodId: recipe.params.moodId,
+            pick: progressionPick,
+            style: compositionStyle
+        )
+        let melodyDensity = min(1, max(0, recipe.params.density * 0.45 + recipe.params.rhythm * 0.55))
+        let sceneBias: MotifSceneBias = recipe.preset == .battleNormal ? .battle : .menu
+        let instrument = InstrumentPalette.from(instrumentId: recipe.params.instrumentId)
+        let melody = MelodyComposer.compose(
+            bars: bars,
+            progression: progression,
+            density: melodyDensity,
+            moodId: recipe.params.moodId,
+            melodyEnabled: recipe.params.melody,
+            melodyChanceScale: instrument.melodyChanceScale,
+            seed: recipe.params.seed,
+            sceneBias: sceneBias,
+            style: compositionStyle
+        )
+        var rng = SeededGenerator(seed: recipe.params.seed)
+        let kickPatternID = Int(rng.unit() * 5)
+        let snarePatternID = Int(rng.unit() * 4)
+        return BGMVariationSignature(
+            compositionStyle: compositionStyle,
+            mode: MusicTheory.variationMode(
+                base: recipe.params.key.mode,
+                moodId: recipe.params.moodId,
+                seed: recipe.params.seed
+            ),
+            progression: progression,
+            melodyRhythmID: melody.rhythmId,
+            melodyContourID: melody.contourId,
+            motifBars: melody.motifBars,
+            kickPatternID: kickPatternID,
+            snarePatternID: snarePatternID,
+            bassPatternID: Int(recipe.params.seed % 3)
+        )
+    }
+
+    /// Scores two patterns by musical structure rather than their raw waveform.
+    public func structuralDistance(between lhs: BGMRecipe, and rhs: BGMRecipe) -> Int {
+        let a = variationSignature(for: lhs)
+        let b = variationSignature(for: rhs)
+        var score = a.compositionStyle == b.compositionStyle ? 0 : 10
+        score += a.mode == b.mode ? 0 : 5
+        score += zip(a.progression, b.progression).reduce(0) { $0 + ($1.0 == $1.1 ? 0 : 2) }
+        score += a.melodyRhythmID == b.melodyRhythmID ? 0 : 3
+        score += a.melodyContourID == b.melodyContourID ? 0 : 3
+        score += a.motifBars == b.motifBars ? 0 : 2
+        score += a.kickPatternID == b.kickPatternID ? 0 : 1
+        score += a.snarePatternID == b.snarePatternID ? 0 : 1
+        score += a.bassPatternID == b.bassPatternID ? 0 : 1
+        return score
+    }
+
+    /// Chooses the candidate that is structurally furthest from the current BGM.
+    public func distinctSeed(from candidates: [UInt64], comparedTo current: BGMRecipe) -> UInt64? {
+        candidates.max { lhs, rhs in
+            var left = current
+            left.params.seed = lhs
+            var right = current
+            right.params.seed = rhs
+            return structuralDistance(between: current, and: left)
+                < structuralDistance(between: current, and: right)
+        }
+    }
 
     public func generate(_ recipe: BGMRecipe) -> AVAudioPCMBuffer {
         let sampleRate = AudioFormatDefaults.sampleRate
@@ -20,10 +111,15 @@ public struct BGMEngine: Sendable {
 
         // Seed-mixed pick explores more progression families / rotations.
         let progressionPick = Int((recipe.params.seed &* 0x9E37_79B9) >> 17) % 128
+        let compositionStyle = MusicTheory.compositionStyle(
+            moodId: recipe.params.moodId,
+            seed: recipe.params.seed
+        )
         let progression = MusicTheory.progression(
             for: recipe.preset,
             moodId: recipe.params.moodId,
-            pick: progressionPick
+            pick: progressionPick,
+            style: compositionStyle
         )
         let mood = MoodPalette.from(
             moodId: recipe.params.moodId,
@@ -39,7 +135,14 @@ public struct BGMEngine: Sendable {
         // User pitch + mild seed transpose (mode preserved) so 別パターン shifts key family.
         let seedTranspose = MusicTheory.seedTransposeSemitones(seed: recipe.params.seed)
         let root = ((recipe.params.key.root + pitch + seedTranspose) % 12 + 12) % 12
-        let key = MusicalKey(root: root, mode: recipe.params.key.mode)
+        let key = MusicalKey(
+            root: root,
+            mode: MusicTheory.variationMode(
+                base: recipe.params.key.mode,
+                moodId: recipe.params.moodId,
+                seed: recipe.params.seed
+            )
+        )
 
         // Rhythm slider drives drum subdivision / fills (audible sparse ↔ busy).
         let hatEvery: Int
@@ -78,7 +181,8 @@ public struct BGMEngine: Sendable {
             melodyEnabled: recipe.params.melody,
             melodyChanceScale: instrument.melodyChanceScale,
             seed: recipe.params.seed,
-            sceneBias: sceneBias
+            sceneBias: sceneBias,
+            style: compositionStyle
         )
         var melodyStarts: [Int: [MelodyNote]] = [:]
         for note in melodyPlan.notes {

@@ -1,8 +1,20 @@
 import Foundation
 
-public enum MusicalMode: String, Codable, Sendable, CaseIterable {
+public enum MusicalMode: String, Codable, Sendable, CaseIterable, Hashable {
     case major
     case minor
+    case dorian
+    case mixolydian
+}
+
+/// Hidden composition direction selected from the seed. It keeps the one-screen
+/// studio simple while making alternate patterns differ as complete phrases.
+public enum BGMCompositionStyle: String, Codable, Sendable, CaseIterable, Hashable {
+    case hook
+    case questionAnswer
+    case syncopated
+    case spacious
+    case riff
 }
 
 public struct MusicalKey: Codable, Equatable, Sendable {
@@ -17,7 +29,18 @@ public struct MusicalKey: Codable, Equatable, Sendable {
 
     public var displayName: String {
         let names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        return "\(names[root]) \(mode == .major ? "major" : "minor")"
+        return "\(names[root]) \(mode.displayName)"
+    }
+}
+
+private extension MusicalMode {
+    var displayName: String {
+        switch self {
+        case .major: return "major"
+        case .minor: return "minor"
+        case .dorian: return "dorian"
+        case .mixolydian: return "mixolydian"
+        }
     }
 }
 
