@@ -17,17 +17,17 @@
 |------|---------------------|
 | 表示名 | レトロサウンド |
 | Bundle ID | `com.trueocean.GameSoundCreator` |
-| Marketing Version | `0.1.0`（ビルド `1`） |
+| Marketing Version | `1.0.0`（ビルド `1`） |
 | 対象 | iPhone / iOS 17+ / 縦向きのみ |
 | アプリアイコン | 投入済み |
 | 課金・広告 | 未実装 |
 | 利用規約・プライバシーポリシー | 未作成 |
-| Privacy Manifest（`PrivacyInfo.xcprivacy`） | 未作成（`@AppStorage` による UserDefaults 利用あり） |
+| Privacy Manifest（`PrivacyInfo.xcprivacy`） | 追加済み（`@AppStorage` による UserDefaults の理由コード `CA92.1` を宣言） |
 | App Privacy（App Store Connect） | 未申告。端末外へのデータ送信と第三者SDKの有無を提出直前に再監査する |
 | 端末内データ | テーマ設定（UserDefaults）、ライブラリ（Documents 内 `library.json`）、書き出しWAV（Documents） |
 | ファイル共有 | 有効。Documents 内のファイルはFilesアプリ／Finderから扱える |
-| 設定画面 | 開発用「旧スタジオ」がReleaseにも表示中。規約・プライバシーポリシーへのリンクは未実装 |
-| バージョン表記 | ビルド設定は `0.1.0 (1)`、設定画面の固定表示は `0.3.4 (UI磨き)` で不一致 |
+| 設定画面 | 開発用「旧スタジオ」はDebugのみ表示。公開文書URLは `AppStoreLinks.swift` に設定後、設定画面に表示される |
+| バージョン表記 | ビルド設定と設定画面の表示を `1.0.0 (1)` に統一 |
 | 方針 | 完全ローカル・手続き生成・オフライン・クラウドAI不使用 |
 | ブランド | 起動画面に ChatNoir Studio |
 

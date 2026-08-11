@@ -1,0 +1,127 @@
+:root {
+  --ink: #12100e;
+  --surface: #1c1915;
+  --surface-raised: #26221d;
+  --paper: #f5efe4;
+  --muted: #b7ad9d;
+  --amber: #e8a938;
+  --amber-bright: #ffd06e;
+  --lime: #b9e453;
+  --line: rgba(245, 239, 228, 0.16);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  color: var(--paper);
+  background: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  line-height: 1.7;
+}
+
+a { color: inherit; }
+
+.site-shell { overflow: hidden; }
+
+.container { width: min(1120px, calc(100% - 40px)); margin-inline: auto; }
+
+.site-header {
+  border-bottom: 1px solid var(--line);
+  background: rgba(18, 16, 14, 0.92);
+}
+
+.nav { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+
+.brand { display: inline-flex; align-items: center; gap: 11px; text-decoration: none; font-weight: 800; letter-spacing: .02em; }
+
+.brand-mark {
+  width: 30px; height: 30px; border: 1px solid rgba(245, 239, 228, .42); border-radius: 50%;
+  background: #080808 url("chatnoir-studio-poster.png") center 78% / 145px auto no-repeat;
+  box-shadow: 0 0 0 3px rgba(232, 169, 56, .12);
+}
+
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; font-size: .9rem; color: var(--muted); }
+.nav-links a { text-decoration: none; }
+.nav-links a:hover { color: var(--amber-bright); }
+
+.hero {
+  min-height: 620px; display: grid; align-items: center; position: relative;
+  isolation: isolate;
+  background: radial-gradient(circle at 78% 28%, rgba(232, 169, 56, .25), transparent 29%), radial-gradient(circle at 18% 88%, rgba(185, 228, 83, .13), transparent 24%);
+}
+
+.hero::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; opacity: .3; pointer-events: none;
+  background-image: linear-gradient(rgba(245,239,228,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(245,239,228,.09) 1px, transparent 1px);
+  background-size: 38px 38px; mask-image: linear-gradient(to bottom, black, transparent 85%);
+}
+
+.hero-content { position: relative; padding-block: 100px; max-width: 780px; }
+.hero-poster {
+  position: absolute; z-index: -2; inset: 0 0 0 auto; width: min(40vw, 520px); opacity: .78;
+  background: linear-gradient(90deg, var(--ink), transparent 34%, rgba(18, 16, 14, .16)), linear-gradient(0deg, var(--ink), transparent 34%), url("chatnoir-studio-poster.png") center 38% / cover no-repeat;
+  filter: grayscale(1) contrast(1.08);
+  mask-image: linear-gradient(to right, transparent, black 34%);
+}
+.studio-signature {
+  width: min(100%, 380px); height: 92px; margin-top: 24px; opacity: .88;
+  background: url("chatnoir-studio-poster.png") center 78% / 100% auto no-repeat;
+  filter: grayscale(1) contrast(1.15);
+}
+.eyebrow { color: var(--amber-bright); font-size: .8rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { font-size: clamp(3rem, 8vw, 6.8rem); line-height: .96; letter-spacing: -.065em; margin-block: 18px 28px; }
+h1 span { color: var(--amber); display: block; }
+h2 { font-size: clamp(1.8rem, 4vw, 3.1rem); line-height: 1.15; letter-spacing: -.04em; }
+h3 { font-size: 1.2rem; }
+.lead { max-width: 620px; color: var(--muted); font-size: clamp(1.05rem, 2vw, 1.25rem); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 19px; border: 1px solid var(--amber); border-radius: 999px; color: var(--ink); background: var(--amber); font-weight: 800; text-decoration: none; }
+.button:hover { background: var(--amber-bright); }
+.button-secondary { color: var(--paper); background: transparent; border-color: var(--line); }
+.button-secondary:hover { color: var(--amber-bright); border-color: var(--amber); background: transparent; }
+
+.section { padding-block: 92px; }
+.section-alt { background: var(--surface); border-block: 1px solid var(--line); }
+.section-intro { max-width: 650px; color: var(--muted); }
+.feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 38px; }
+.feature { padding: 27px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-raised); }
+.feature-number { color: var(--amber); font: 800 .78rem ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; }
+.feature p, .card p { color: var(--muted); }
+
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: step; margin-top: 38px; }
+.step { counter-increment: step; padding-top: 66px; position: relative; }
+.step::before { content: "0" counter(step); position: absolute; top: 0; color: var(--lime); font: 800 2rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.legal-hero { padding-block: 72px 54px; border-bottom: 1px solid var(--line); background: linear-gradient(135deg, var(--surface), var(--ink)); }
+.legal-hero h1 { font-size: clamp(2.5rem, 6vw, 4.8rem); }
+.legal-content { width: min(780px, calc(100% - 40px)); margin: 0 auto; padding-block: 64px 100px; }
+.legal-content h2 { font-size: 1.45rem; margin-top: 46px; }
+.legal-content p, .legal-content li { color: #d5ccbd; }
+.legal-content ul { padding-left: 1.35em; }
+.notice { padding: 18px 20px; border-left: 3px solid var(--amber); background: rgba(232,169,56,.09); color: var(--paper); }
+.meta { color: var(--muted); font-size: .9rem; }
+.support-card { padding: 30px; margin-top: 32px; border: 1px solid var(--amber); border-radius: 18px; background: rgba(232,169,56,.08); }
+code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; color: var(--amber-bright); }
+
+.site-footer { padding-block: 38px; border-top: 1px solid var(--line); color: var(--muted); font-size: .87rem; }
+.footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 16px; }
+.footer-links a { text-decoration: none; }
+
+@media (max-width: 720px) {
+  .container { width: min(100% - 30px, 1120px); }
+  .nav { padding-block: 14px; align-items: flex-start; flex-direction: column; gap: 10px; }
+  .nav-links { gap: 14px; }
+  .hero { min-height: 540px; }
+  .hero-poster { width: 66vw; opacity: .4; }
+  .studio-signature { width: 300px; height: 73px; }
+  .hero-content { padding-block: 74px; }
+  .section { padding-block: 64px; }
+  .feature-grid, .steps { grid-template-columns: 1fr; }
+}

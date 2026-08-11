@@ -1366,13 +1366,14 @@ struct StudioView: View {
 
     private func playNowAsync(newSeed: Bool) async throws {
         if newSeed {
-            let currentBGM: BGMRecipe?
-            if case .bgm(let recipe) = mapped {
-                currentBGM = recipe
-            } else {
-                currentBGM = nil
+            switch mapped {
+            case .bgm(let recipe):
+                seed = service.withDistinctBGMSeed(currentIntent(), avoiding: recipe).seed ?? seed
+            case .sfx(let recipe):
+                seed = service.withDistinctSFXSeed(currentIntent(), avoiding: recipe).seed ?? seed
+            case nil:
+                seed = service.withNewSeed(currentIntent()).seed ?? seed
             }
-            seed = service.withDistinctBGMSeed(currentIntent(), avoiding: currentBGM).seed ?? seed
             catalogDirty = true
         }
         let intent = currentIntent()
@@ -1861,23 +1862,33 @@ struct SettingsView: View {
             .themedListRowBackground(theme)
 
             Section("アプリ") {
-                LabeledContent("バージョン", value: "0.3.4 (UI磨き)")
+                LabeledContent("バージョン", value: appVersion)
                 LabeledContent("カタログ", value: "カードバトル MVP")
                 LabeledContent("サンプルレート", value: "44100 Hz")
             }
             .themedListRowBackground(theme)
 
-            Section("開発用") {
-                NavigationLink("旧スタジオ (SE/BGM 詳細)") {
-                    LegacyStudioView()
+            if isDebugBuild {
+                Section("開発用") {
+                    NavigationLink("旧スタジオ (SE/BGM 詳細)") {
+                        LegacyStudioView()
+                    }
                 }
+                .themedListRowBackground(theme)
             }
-            .themedListRowBackground(theme)
 
             Section("について") {
                 Text("外部AIは使わず、端末内の手続き生成だけで動作します。")
                     .font(.footnote)
                     .foregroundStyle(theme.secondaryText)
+
+                Text("生成した音声は、ユーザー自身のゲームや作品で利用できます。")
+                    .font(.footnote)
+                    .foregroundStyle(theme.secondaryText)
+
+                policyLink(title: "プライバシーポリシー", url: AppStoreLinks.privacyPolicy)
+                policyLink(title: "利用規約", url: AppStoreLinks.termsOfUse)
+                policyLink(title: "サポート", url: AppStoreLinks.support)
             }
             .themedListRowBackground(theme)
         }
@@ -1890,6 +1901,32 @@ struct SettingsView: View {
             themeRandomPick = AppTheme.rollRandomPick().rawValue
         }
         themeIDRaw = option.rawValue
+    }
+
+    private var appVersion: String {
+        let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+        return "\(shortVersion) (\(build))"
+    }
+
+    private var isDebugBuild: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private func policyLink(title: String, url: URL?) -> some View {
+        if let url {
+            Link(title, destination: url)
+                .foregroundStyle(theme.accent)
+        } else {
+            Text("\(title)は公開準備中です")
+                .font(.footnote)
+                .foregroundStyle(theme.secondaryText)
+        }
     }
 
     @ViewBuilder

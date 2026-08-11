@@ -64,6 +64,24 @@ public enum SFXCategory: String, Codable, CaseIterable, Sendable, Identifiable {
 
     public var id: String { rawValue }
 
+    /// Longer or inherently multi-stage sounds benefit from staggered motifs rather
+    /// than a second immediate hit when generating an alternate pattern.
+    public var prefersExtendedVariation: Bool {
+        switch self {
+        case .uiWarning, .cardPlay, .cardShuffle,
+             .rewardCoin, .rewardChest, .rewardLevelUp,
+             .puzzleCombo,
+             .attackHeavy, .attackBreak, .attackBow, .attackCritical,
+             .skillCast, .magicFire, .magicIce, .magicPoison, .magicStorm, .magicBeam, .heal,
+             .moveFly, .moveSwim, .moveDoor, .moveWarp,
+             .gachaSpin, .gachaRare,
+             .victory, .defeat, .fanfareSting, .fanfareCorrect:
+            return true
+        default:
+            return false
+        }
+    }
+
     public var displayName: String {
         switch self {
         case .uiTap: return "タップ"

@@ -21,6 +21,8 @@
 		A1000000000000000000000D /* StudioGenerationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* StudioGenerationState.swift */; };
 		A1000000000000000000000E /* StudioGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* StudioGenerationViewModel.swift */; };
 		A1000000000000000000000F /* LibraryPlaybackViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* LibraryPlaybackViewModel.swift */; };
+		A10000000000000000000010 /* AppStoreLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* AppStoreLinks.swift */; };
+		A10000000000000000000011 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +40,8 @@
 		A2000000000000000000000D /* StudioGenerationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioGenerationState.swift; sourceTree = "<group>"; };
 		A2000000000000000000000E /* StudioGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioGenerationViewModel.swift; sourceTree = "<group>"; };
 		A2000000000000000000000F /* LibraryPlaybackViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPlaybackViewModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* AppStoreLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreLinks.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,7 +77,9 @@
 				A2000000000000000000000D /* StudioGenerationState.swift */,
 				A2000000000000000000000E /* StudioGenerationViewModel.swift */,
 				A2000000000000000000000F /* LibraryPlaybackViewModel.swift */,
+				A20000000000000000000010 /* AppStoreLinks.swift */,
 				A20000000000000000000007 /* LegacyStudioView.swift */,
+				A20000000000000000000011 /* PrivacyInfo.xcprivacy */,
 				A2000000000000000000000A /* LaunchScreen.storyboard */,
 				A20000000000000000000003 /* Assets.xcassets */,
 			);
@@ -154,6 +160,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000003 /* Assets.xcassets in Resources */,
+				A10000000000000000000011 /* PrivacyInfo.xcprivacy in Resources */,
 				A1000000000000000000000A /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -176,6 +183,7 @@
 				A1000000000000000000000D /* StudioGenerationState.swift in Sources */,
 				A1000000000000000000000E /* StudioGenerationViewModel.swift in Sources */,
 				A1000000000000000000000F /* LibraryPlaybackViewModel.swift in Sources */,
+				A10000000000000000000010 /* AppStoreLinks.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -297,7 +305,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.trueocean.GameSoundCreator;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -329,7 +337,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.trueocean.GameSoundCreator;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

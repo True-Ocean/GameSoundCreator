@@ -1,22 +1,74 @@
 import AVFoundation
 import Foundation
 
+/// Discrete, audible choices behind an SFX variation. Values intentionally describe
+/// synthesis structure rather than sample-level random noise.
+public struct SFXVariationSignature: Equatable, Sendable {
+    public let profileID: Int
+    public let timingID: Int
+    public let timbreID: Int
+    public let shapeID: Int
+    public let motifID: Int
+}
+
 public struct SFXEngine: Sendable {
     public init() {}
+
+    /// Returns the structural profile for a recipe without rendering audio.
+    public func variationSignature(for recipe: SFXRecipe) -> SFXVariationSignature {
+        var rng = makeRNG(for: recipe.params)
+        let pattern = Pattern.draw(from: &rng)
+        let variantPlan = plan(for: recipe.category, pattern: pattern)
+        return SFXVariationSignature(
+            profileID: pattern.profilePick,
+            timingID: variantPlan.timing.rawValue,
+            timbreID: variantPlan.timbre.rawValue,
+            shapeID: pattern.shapePick,
+            motifID: pattern.motifPick
+        )
+    }
+
+    /// Scores changes in audible structure. Small within-profile jitter is deliberately
+    /// excluded so a new pattern always changes a recognisable character.
+    public func structuralDistance(between lhs: SFXRecipe, and rhs: SFXRecipe) -> Int {
+        let a = variationSignature(for: lhs)
+        let b = variationSignature(for: rhs)
+        var score = a.timingID == b.timingID ? 0 : 5
+        score += a.timbreID == b.timbreID ? 0 : 4
+        score += a.profileID == b.profileID ? 0 : 2
+        score += a.motifID == b.motifID ? 0 : 2
+        score += a.shapeID == b.shapeID ? 0 : 1
+        return score
+    }
+
+    /// Chooses the candidate whose stable sound profile is furthest from the current SFX.
+    public func distinctSeed(from candidates: [UInt64], comparedTo current: SFXRecipe) -> UInt64? {
+        candidates.max { lhs, rhs in
+            var left = current
+            left.params.seed = lhs
+            left.params.variation = Int(lhs % 8)
+            var right = current
+            right.params.seed = rhs
+            right.params.variation = Int(rhs % 8)
+            return structuralDistance(between: current, and: left)
+                < structuralDistance(between: current, and: right)
+        }
+    }
 
     public func generate(_ recipe: SFXRecipe) -> AVAudioPCMBuffer {
         let sampleRate = AudioFormatDefaults.sampleRate
         let frames = max(1, Int((Double(recipe.params.durationMs) / 1000.0) * sampleRate))
         var samples = [Float](repeating: 0, count: frames)
-        var rng = SeededGenerator(seed: recipe.params.seed &+ UInt64(recipe.params.variation) &* 97_331)
+        var rng = makeRNG(for: recipe.params)
 
-        render(
+        let plan = render(
             category: recipe.category,
             params: recipe.params,
             samples: &samples,
             sampleRate: sampleRate,
             rng: &rng
         )
+        apply(plan, to: &samples, sampleRate: sampleRate)
         layerRepeatedHits(count: recipe.params.count, samples: &samples)
         Mastering.apply(&samples, targetPeak: 0.82 + 0.12 * recipe.params.intensity)
 
@@ -26,6 +78,10 @@ public struct SFXEngine: Sendable {
         ) { frame in
             samples[frame]
         }
+    }
+
+    private func makeRNG(for params: SFXParams) -> SeededGenerator {
+        SeededGenerator(seed: params.seed &+ UInt64(params.variation) &* 97_331)
     }
 
     /// Overlay delayed copies so 「音数」 increases audible hits within the same duration.
@@ -51,15 +107,32 @@ public struct SFXEngine: Sendable {
         var bright: Float
         var snap: Float
         var morph: Float
+        var profilePick: Int
         var shapePick: Int
         var motifPick: Int
 
         static func draw(from rng: inout SeededGenerator) -> Pattern {
-            Pattern(
-                pitchMul: Double(rng.range(0.82, 1.28)),
-                bright: rng.range(0.0, 1.0),
-                snap: rng.range(0.0, 1.0),
-                morph: rng.range(0.0, 1.0),
+            // Four bounded profiles give each regenerated sound a recognisable but
+            // still plausible performance character. The small jitter keeps repeated
+            // exports from sounding mechanically quantised.
+            let profilePick = Int(rng.unit() * 4) % 4
+            let profiles: [(pitch: Double, bright: Float, snap: Float, morph: Float)] = [
+                (0.90, 0.30, 0.28, 0.28), // soft / restrained
+                (1.00, 0.52, 0.50, 0.50), // balanced
+                (1.11, 0.74, 0.76, 0.66), // crisp / energetic
+                (0.96, 0.38, 0.58, 0.82), // rounded / expressive
+            ]
+            let profile = profiles[profilePick]
+            let pitchJitter = Double(rng.range(-0.035, 0.035))
+            let brightJitter = rng.range(-0.12, 0.12)
+            let snapJitter = rng.range(-0.12, 0.12)
+            let morphJitter = rng.range(-0.12, 0.12)
+            return Pattern(
+                pitchMul: profile.pitch + pitchJitter,
+                bright: min(1, max(0, profile.bright + brightJitter)),
+                snap: min(1, max(0, profile.snap + snapJitter)),
+                morph: min(1, max(0, profile.morph + morphJitter)),
+                profilePick: profilePick,
                 shapePick: Int(rng.unit() * 4) % 4,
                 motifPick: Int(rng.unit() * 4) % 4
             )
@@ -75,14 +148,127 @@ public struct SFXEngine: Sendable {
         }
     }
 
+    /// Four time structures are shared by every purpose, but their assignment is
+    /// adapted to short feedback sounds versus longer, expressive sounds.
+    private enum TimingStyle: Int, Sendable {
+        case single
+        case double
+        case staggered
+        case tail
+    }
+
+    /// Keeps each alternate within a coherent material family rather than relying on
+    /// an arbitrary pitch jump or noise amount.
+    private enum TimbreStyle: Int, Sendable {
+        case native
+        case soft
+        case crisp
+        case resonant
+    }
+
+    private struct VariantPlan: Sendable {
+        let timing: TimingStyle
+        let timbre: TimbreStyle
+    }
+
+    private func plan(for category: SFXCategory, pattern: Pattern) -> VariantPlan {
+        let timing: TimingStyle
+        if category.prefersExtendedVariation {
+            switch pattern.profilePick {
+            case 0: timing = .single
+            case 1: timing = .tail
+            case 2: timing = .staggered
+            default: timing = .tail
+            }
+        } else {
+            switch pattern.profilePick {
+            case 0: timing = .single
+            case 1: timing = .double
+            case 2: timing = .tail
+            default: timing = .double
+            }
+        }
+
+        let timbre: TimbreStyle
+        switch pattern.profilePick {
+        case 0: timbre = .native
+        case 1: timbre = .soft
+        case 2: timbre = .crisp
+        default: timbre = .resonant
+        }
+        return VariantPlan(timing: timing, timbre: timbre)
+    }
+
+    private func apply(_ plan: VariantPlan, to samples: inout [Float], sampleRate: Double) {
+        switch plan.timing {
+        case .single:
+            break
+        case .double:
+            layerEventCopies(&samples, offsets: [0.16], gains: [0.42])
+        case .staggered:
+            layerEventCopies(&samples, offsets: [0.12, 0.27], gains: [0.38, 0.22])
+        case .tail:
+            layerEventCopies(&samples, offsets: [0.22, 0.40], gains: [0.28, 0.13])
+        }
+
+        switch plan.timbre {
+        case .native:
+            break
+        case .soft:
+            SpaceFX.applyLowpass(&samples, cutoffHz: 3_600, sampleRate: sampleRate)
+        case .crisp:
+            emphasizeEdges(&samples)
+        case .resonant:
+            addResonance(&samples, sampleRate: sampleRate)
+        }
+    }
+
+    /// Adds delayed copies without circular wrapping, so one-shot sounds never gain a
+    /// pre-echo. The result changes their rhythmic silhouette rather than only gain.
+    private func layerEventCopies(_ samples: inout [Float], offsets: [Double], gains: [Float]) {
+        guard samples.count > 16 else { return }
+        let base = samples
+        for (ratio, gain) in zip(offsets, gains) {
+            let offset = max(8, Int(Double(samples.count) * ratio))
+            guard offset < samples.count else { continue }
+            for i in offset..<samples.count {
+                samples[i] += base[i - offset] * gain
+            }
+        }
+    }
+
+    private func emphasizeEdges(_ samples: inout [Float]) {
+        guard samples.count > 1 else { return }
+        var previous: Float = 0
+        for i in samples.indices {
+            let current = samples[i]
+            samples[i] = current + (current - previous) * 0.16
+            previous = current
+        }
+    }
+
+    private func addResonance(_ samples: inout [Float], sampleRate: Double) {
+        guard samples.count > 32 else { return }
+        let base = samples
+        let firstDelay = max(4, Int(sampleRate * 0.0047))
+        let secondDelay = max(8, Int(sampleRate * 0.0109))
+        for i in samples.indices {
+            var value = base[i]
+            if i >= firstDelay { value += base[i - firstDelay] * 0.18 }
+            if i >= secondDelay { value += base[i - secondDelay] * 0.09 }
+            samples[i] = value
+        }
+    }
+
     private func render(
         category: SFXCategory,
         params: SFXParams,
         samples: inout [Float],
         sampleRate: Double,
         rng: inout SeededGenerator
-    ) {
+    ) -> VariantPlan {
         let pattern = Pattern.draw(from: &rng)
+        let variantPlan = plan(for: category, pattern: pattern)
         let pitch = Double(params.pitch) * pattern.pitchMul
         let timbre = min(1, max(0, params.timbre * 0.55 + pattern.bright * 0.45))
         let intensity = params.intensity
@@ -398,6 +584,7 @@ public struct SFXEngine: Sendable {
                 spacing: 0.02 + 0.03 * Double(pattern.morph)
             )
         }
+        return variantPlan
     }
 
     // MARK: - UI

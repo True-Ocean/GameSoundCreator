@@ -60,6 +60,82 @@ final class AudioGenCoreTests: XCTestCase {
         }
     }
 
+    func testSFXVariationProfilesCoverDistinctNaturalCharacters() {
+        let engine = SFXEngine()
+        let signatures = (1...64).map { seed in
+            engine.variationSignature(for: SFXRecipe.make(category: .rewardCoin, seed: UInt64(seed)))
+        }
+        XCTAssertEqual(Set(signatures.map(\.profileID)).count, 4)
+        XCTAssertGreaterThan(Set(signatures.map(\.shapeID)).count, 3)
+        XCTAssertGreaterThan(Set(signatures.map(\.motifID)).count, 3)
+    }
+
+    func testEverySFXCategoryOffersAllFourTimingAndTimbreVariants() {
+        let engine = SFXEngine()
+        for category in SFXCategory.allCases {
+            let signatures = (1...96).map { seed in
+                engine.variationSignature(for: SFXRecipe.make(category: category, seed: UInt64(seed)))
+            }
+            XCTAssertEqual(
+                Set(signatures.map { "\($0.timingID)-\($0.timbreID)" }).count,
+                4,
+                "missing alternate structures for \(category.rawValue)"
+            )
+        }
+    }
+
+    func testEverySFXCategoryHasAudiblyDifferentStructuralVariants() throws {
+        let engine = SFXEngine()
+        for category in SFXCategory.allCases {
+            var seedForProfile: [Int: UInt64] = [:]
+            for seed in 1...96 {
+                let recipe = SFXRecipe.make(category: category, seed: UInt64(seed))
+                seedForProfile[engine.variationSignature(for: recipe).profileID] = UInt64(seed)
+            }
+            XCTAssertEqual(seedForProfile.count, 4, "missing profiles for \(category.rawValue)")
+            guard let baseSeed = seedForProfile[0] else { return XCTFail("missing base profile") }
+            let base = engine.generate(SFXRecipe.make(category: category, seed: baseSeed))
+            for profile in 1...3 {
+                guard let seed = seedForProfile[profile] else { return XCTFail("missing profile") }
+                let alternate = engine.generate(SFXRecipe.make(category: category, seed: seed))
+                XCTAssertGreaterThan(
+                    meanAbsoluteDifference(base, alternate),
+                    0.018,
+                    "structural variant too subtle for \(category.rawValue), profile \(profile)"
+                )
+            }
+        }
+    }
+
+    func testDistinctSFXSeedSelectsTheMostDifferentSoundProfile() throws {
+        let engine = SFXEngine()
+        let current = SFXRecipe.make(category: .rewardChest, seed: 42, variation: 2)
+        let candidates = (1...32).map(UInt64.init)
+        let selected = try XCTUnwrap(engine.distinctSeed(from: candidates, comparedTo: current))
+
+        var selectedRecipe = current
+        selectedRecipe.params.seed = selected
+        selectedRecipe.params.variation = Int(selected % 8)
+        let selectedDistance = engine.structuralDistance(between: current, and: selectedRecipe)
+        let bestDistance = candidates.map { seed -> Int in
+            var candidate = current
+            candidate.params.seed = seed
+            candidate.params.variation = Int(seed % 8)
+            return engine.structuralDistance(between: current, and: candidate)
+        }.max()
+
+        XCTAssertEqual(selectedDistance, bestDistance)
+        XCTAssertGreaterThanOrEqual(selectedDistance, 8)
+        XCTAssertNotEqual(
+            engine.variationSignature(for: current).profileID,
+            engine.variationSignature(for: selectedRecipe).profileID
+        )
+        XCTAssertNotEqual(
+            engine.variationSignature(for: current).timingID,
+            engine.variationSignature(for: selectedRecipe).timingID
+        )
+    }
+
     func testAllCategoriesGenerateNonSilentAudio() {
         let engine = SFXEngine()
         for category in SFXCategory.allCases {

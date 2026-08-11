@@ -251,6 +251,29 @@ public final class GenerationService {
         return next
     }
 
+    /// Keeps the studio controls intact while choosing a natural SFX profile that is
+    /// structurally distinct from the one currently being previewed.
+    public func withDistinctSFXSeed(_ intent: SoundIntent, avoiding current: SFXRecipe?) -> SoundIntent {
+        guard intent.soundType == .sfx, let current else {
+            return withNewSeed(intent)
+        }
+
+        var candidates = Set<UInt64>()
+        while candidates.count < 12 {
+            let candidate = UInt64.random(in: 1...999_999)
+            if candidate != current.params.seed {
+                candidates.insert(candidate)
+            }
+        }
+
+        guard let seed = sfxEngine.distinctSeed(from: Array(candidates), comparedTo: current) else {
+            return withNewSeed(intent)
+        }
+        var next = intent
+        next.seed = seed
+        return next
+    }
+
     private func activatePlaybackSession() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
