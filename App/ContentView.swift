@@ -262,7 +262,7 @@ final class ProStore {
     static let shared = ProStore()
 
     static let productID = "com.trueocean.GameSoundCreator.pro"
-    static let freeLibraryLimit = 10
+    static let freeLibraryLimit = 5
     static let freeDailyExportLimit = 3
 
     private let defaults = UserDefaults.standard
@@ -443,21 +443,10 @@ private struct ProUpgradeSheet: View {
                 Spacer()
 
                 if store.isPro {
-                    VStack(spacing: 12) {
-                        Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
-                            .font(.headline)
-                            .foregroundStyle(theme.accent)
-                            .frame(maxWidth: .infinity)
-
-                        Button("購入を復元") {
-                            Task { await store.restore() }
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(theme.accent)
-                        .disabled(store.isPurchasing)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .controlSize(.large)
+                    Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(theme.accent)
+                        .frame(maxWidth: .infinity)
                 } else {
                     VStack(spacing: 12) {
                         Button {
@@ -477,8 +466,18 @@ private struct ProUpgradeSheet: View {
                         .tint(theme.accent)
                         .disabled(store.isPurchasing || store.isLoading)
 
-                        Button("購入を復元") {
+                        Button {
                             Task { await store.restore() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if store.isPurchasing {
+                                    ProgressView()
+                                } else {
+                                    Text("購入を復元")
+                                }
+                                Spacer()
+                            }
                         }
                         .buttonStyle(.bordered)
                         .tint(theme.accent)
@@ -2140,12 +2139,8 @@ struct SettingsView: View {
                 if proStore.isPro {
                     Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(theme.accent)
-                    Button("購入を復元") {
-                        Task { await proStore.restore() }
-                    }
-                    .foregroundStyle(theme.accent)
                 } else {
-                    Text("無料版はライブラリ保存10件、WAV書き出し・共有は1日3回までです。")
+                    Text("無料版はライブラリ保存5件、WAV書き出し・共有は1日3回までです。")
                         .font(.footnote)
                         .foregroundStyle(theme.secondaryText)
                     Button("Proにアップグレード") {
