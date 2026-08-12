@@ -267,6 +267,7 @@ final class ProStore {
 
     private let defaults = UserDefaults.standard
     private var updatesTask: Task<Void, Never>?
+    private var entitlementRefreshID = UUID()
 
     private(set) var product: Product?
     private(set) var isPro = false
@@ -279,8 +280,7 @@ final class ProStore {
             for await result in Transaction.updates {
                 guard let self else { return }
                 if case .verified(let transaction) = result {
-                    await transaction.finish()
-                    await self.refreshEntitlements()
+                    await self.apply(transaction)
                 }
             }
         }
@@ -316,8 +316,7 @@ final class ProStore {
                     errorMessage = "購入内容を確認できませんでした。"
                     return
                 }
-                await transaction.finish()
-                await refreshEntitlements()
+                await apply(transaction)
             case .pending:
                 errorMessage = "購入の承認待ちです。承認後にもう一度お試しください。"
             case .userCancelled:
@@ -337,9 +336,9 @@ final class ProStore {
         do {
             try await AppStore.sync()
             await refreshEntitlements()
-            if !isPro {
-                errorMessage = "復元できる購入が見つかりませんでした。"
-            }
+            errorMessage = isPro
+                ? "購入を復元しました。"
+                : "復元できる購入が見つかりませんでした。"
         } catch {
             errorMessage = "購入の復元を完了できませんでした。もう一度お試しください。"
         }
@@ -383,7 +382,17 @@ final class ProStore {
         return defaults.integer(forKey: "proStore.exportCount")
     }
 
+    private func apply(_ transaction: StoreKit.Transaction) async {
+        guard transaction.productID == Self.productID else { return }
+        entitlementRefreshID = UUID()
+        isPro = transaction.revocationDate == nil
+        await transaction.finish()
+        await refreshEntitlements()
+    }
+
     private func refreshEntitlements() async {
+        let refreshID = UUID()
+        entitlementRefreshID = refreshID
         var hasPro = false
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
@@ -391,6 +400,7 @@ final class ProStore {
                 hasPro = true
             }
         }
+        guard refreshID == entitlementRefreshID else { return }
         isPro = hasPro
     }
 
@@ -433,10 +443,21 @@ private struct ProUpgradeSheet: View {
                 Spacer()
 
                 if store.isPro {
-                    Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
-                        .font(.headline)
-                        .foregroundStyle(theme.accent)
-                        .frame(maxWidth: .infinity)
+                    VStack(spacing: 12) {
+                        Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                            .foregroundStyle(theme.accent)
+                            .frame(maxWidth: .infinity)
+
+                        Button("購入を復元") {
+                            Task { await store.restore() }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(theme.accent)
+                        .disabled(store.isPurchasing)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .controlSize(.large)
                 } else {
                     VStack(spacing: 12) {
                         Button {
@@ -2119,6 +2140,10 @@ struct SettingsView: View {
                 if proStore.isPro {
                     Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(theme.accent)
+                    Button("購入を復元") {
+                        Task { await proStore.restore() }
+                    }
+                    .foregroundStyle(theme.accent)
                 } else {
                     Text("無料版はライブラリ保存10件、WAV書き出し・共有は1日3回までです。")
                         .font(.footnote)
