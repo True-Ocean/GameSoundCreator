@@ -329,7 +329,7 @@ struct StudioView: View {
         _genreId = State(initialValue: Catalog.Genre.cardBattle.rawValue)
         _loopEnabled = State(initialValue: soundType == .bgm)
         if soundType == .bgm {
-            let scene = Catalog.BGMScene.battleNormal
+            let scene = Catalog.BGMScene.title
             let instrument = Catalog.Instrument.defaultFor(scene: scene).rawValue
             let mood = scene.defaultMood.rawValue
             let length = scene.defaultLength.rawValue
