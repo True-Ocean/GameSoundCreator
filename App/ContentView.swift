@@ -426,7 +426,7 @@ private struct ProUpgradeSheet: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("ライブラリ保存が無制限", systemImage: "bookmark.fill")
                     Label("WAV書き出し・共有が無制限", systemImage: "waveform")
-                    Label("買い切り・広告なし", systemImage: "checkmark.seal.fill")
+                    Label("一度の購入でずっと利用可能", systemImage: "checkmark.seal.fill")
                 }
                 .foregroundStyle(theme.primaryText)
 
@@ -438,30 +438,33 @@ private struct ProUpgradeSheet: View {
                         .foregroundStyle(theme.accent)
                         .frame(maxWidth: .infinity)
                 } else {
-                    Button {
-                        Task { await store.purchase() }
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if store.isPurchasing {
-                                ProgressView().tint(.black)
-                            } else {
-                                Text(store.product.map { "\($0.displayPrice)でProにする" } ?? "Proにする")
+                    VStack(spacing: 12) {
+                        Button {
+                            Task { await store.purchase() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if store.isPurchasing {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Text(store.product.map { "\($0.displayPrice)でProにする" } ?? "Proにする")
+                                }
+                                Spacer()
                             }
-                            Spacer()
                         }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(theme.accent)
-                    .disabled(store.isPurchasing || store.isLoading)
+                        .buttonStyle(.borderedProminent)
+                        .tint(theme.accent)
+                        .disabled(store.isPurchasing || store.isLoading)
 
-                    Button("購入を復元") {
-                        Task { await store.restore() }
+                        Button("購入を復元") {
+                            Task { await store.restore() }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(theme.accent)
+                        .disabled(store.isPurchasing)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(theme.accent)
                     .frame(maxWidth: .infinity)
-                    .disabled(store.isPurchasing)
+                    .controlSize(.large)
                 }
             }
             .padding(24)
