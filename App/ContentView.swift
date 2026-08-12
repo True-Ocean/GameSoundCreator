@@ -1868,24 +1868,12 @@ struct SettingsView: View {
             }
             .themedListRowBackground(theme)
 
-            if isDebugBuild {
-                Section("開発用") {
-                    NavigationLink("旧スタジオ (SE/BGM 詳細)") {
-                        LegacyStudioView()
-                    }
-                }
-                .themedListRowBackground(theme)
-            }
-
-            Section("について") {
-                Text("外部AIは使わず、端末内の手続き生成だけで動作します。")
+            Section("レトロサウンドについて") {
+                Text("レトロサウンドは、外部AIを使わず、端末内の手続き生成とシンセサイザーでゲーム向けのBGM・効果音をつくるアプリです。生成した音は、ご自身のゲームや作品で利用できます。")
                     .font(.footnote)
                     .foregroundStyle(theme.secondaryText)
 
-                Text("生成した音声は、ユーザー自身のゲームや作品で利用できます。")
-                    .font(.footnote)
-                    .foregroundStyle(theme.secondaryText)
-
+                policyLink(title: "公式サイト", url: AppStoreLinks.website)
                 policyLink(title: "プライバシーポリシー", url: AppStoreLinks.privacyPolicy)
                 policyLink(title: "利用規約", url: AppStoreLinks.termsOfUse)
                 policyLink(title: "サポート", url: AppStoreLinks.support)
@@ -1907,14 +1895,6 @@ struct SettingsView: View {
         let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
         return "\(shortVersion) (\(build))"
-    }
-
-    private var isDebugBuild: Bool {
-        #if DEBUG
-        true
-        #else
-        false
-        #endif
     }
 
     @ViewBuilder

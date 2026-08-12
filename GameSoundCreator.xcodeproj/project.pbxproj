@@ -14,7 +14,6 @@
 		A10000000000000000000004 /* AudioGenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A50000000000000000000001 /* AudioGenCore */; };
 		A10000000000000000000005 /* PlaybackMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* PlaybackMonitor.swift */; };
 		A10000000000000000000006 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* LibraryStore.swift */; };
-		A10000000000000000000007 /* LegacyStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* LegacyStudioView.swift */; };
 		A10000000000000000000008 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* AppTheme.swift */; };
 		A1000000000000000000000B /* LaunchWarmup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* LaunchWarmup.swift */; };
 		A1000000000000000000000C /* StudioOperationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* StudioOperationState.swift */; };
@@ -32,7 +31,6 @@
 		A20000000000000000000004 /* GameSoundCreator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameSoundCreator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000005 /* PlaybackMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackMonitor.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
-		A20000000000000000000007 /* LegacyStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyStudioView.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		A2000000000000000000000A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A2000000000000000000000B /* LaunchWarmup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchWarmup.swift; sourceTree = "<group>"; };
@@ -78,7 +76,6 @@
 				A2000000000000000000000E /* StudioGenerationViewModel.swift */,
 				A2000000000000000000000F /* LibraryPlaybackViewModel.swift */,
 				A20000000000000000000010 /* AppStoreLinks.swift */,
-				A20000000000000000000007 /* LegacyStudioView.swift */,
 				A20000000000000000000011 /* PrivacyInfo.xcprivacy */,
 				A2000000000000000000000A /* LaunchScreen.storyboard */,
 				A20000000000000000000003 /* Assets.xcassets */,
@@ -178,7 +175,6 @@
 				A10000000000000000000008 /* AppTheme.swift in Sources */,
 				A10000000000000000000005 /* PlaybackMonitor.swift in Sources */,
 				A10000000000000000000006 /* LibraryStore.swift in Sources */,
-				A10000000000000000000007 /* LegacyStudioView.swift in Sources */,
 				A1000000000000000000000C /* StudioOperationState.swift in Sources */,
 				A1000000000000000000000D /* StudioGenerationState.swift in Sources */,
 				A1000000000000000000000E /* StudioGenerationViewModel.swift in Sources */,
