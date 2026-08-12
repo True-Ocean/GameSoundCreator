@@ -1863,8 +1863,6 @@ struct SettingsView: View {
 
             Section("アプリ") {
                 LabeledContent("バージョン", value: appVersion)
-                LabeledContent("カタログ", value: "カードバトル MVP")
-                LabeledContent("サンプルレート", value: "44100 Hz")
             }
             .themedListRowBackground(theme)
 
