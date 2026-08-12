@@ -102,6 +102,8 @@ SPEC §10 / ROADMAP Phase 5 の推奨順:
 | App Store の販売元 | 個人登録の法的氏名（ローマ字表記） |
 | 対応端末 | iPhone のみ（縦向き） |
 | ストア掲載言語 | 日本語のみ |
+| Pro商品ID | `com.trueocean.GameSoundCreator.pro`（非消耗型・買い切り） |
+| Proのアプリ実装 | StoreKit 2で実装済み。App Store Connectの商品登録とSandbox確認は未完了 |
 
 ### 3.2 その他の決定事項
 

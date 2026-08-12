@@ -1,4 +1,5 @@
 import AudioGenCore
+import StoreKit
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -255,6 +256,234 @@ private struct HomeHeroTitle: View {
 
 // MARK: - Studio
 
+@MainActor
+@Observable
+final class ProStore {
+    static let shared = ProStore()
+
+    static let productID = "com.trueocean.GameSoundCreator.pro"
+    static let freeLibraryLimit = 10
+    static let freeDailyExportLimit = 3
+
+    private let defaults = UserDefaults.standard
+    private var updatesTask: Task<Void, Never>?
+
+    private(set) var product: Product?
+    private(set) var isPro = false
+    private(set) var isLoading = true
+    private(set) var isPurchasing = false
+    private(set) var errorMessage: String?
+
+    private init() {
+        updatesTask = Task { [weak self] in
+            for await result in Transaction.updates {
+                guard let self else { return }
+                if case .verified(let transaction) = result {
+                    await transaction.finish()
+                    await self.refreshEntitlements()
+                }
+            }
+        }
+        Task { await configure() }
+    }
+
+    func configure() async {
+        await refreshEntitlements()
+        do {
+            product = try await Product.products(for: [Self.productID]).first
+        } catch {
+            errorMessage = "購入情報を読み込めませんでした。通信状況を確認して、もう一度お試しください。"
+        }
+        isLoading = false
+    }
+
+    func purchase() async {
+        if product == nil {
+            await configure()
+        }
+        guard let product else {
+            errorMessage = "購入情報を読み込めませんでした。時間をおいてもう一度お試しください。"
+            return
+        }
+
+        isPurchasing = true
+        defer { isPurchasing = false }
+
+        do {
+            switch try await product.purchase() {
+            case .success(let result):
+                guard case .verified(let transaction) = result else {
+                    errorMessage = "購入内容を確認できませんでした。"
+                    return
+                }
+                await transaction.finish()
+                await refreshEntitlements()
+            case .pending:
+                errorMessage = "購入の承認待ちです。承認後にもう一度お試しください。"
+            case .userCancelled:
+                break
+            @unknown default:
+                break
+            }
+        } catch {
+            errorMessage = "購入を完了できませんでした。もう一度お試しください。"
+        }
+    }
+
+    func restore() async {
+        isPurchasing = true
+        defer { isPurchasing = false }
+
+        do {
+            try await AppStore.sync()
+            await refreshEntitlements()
+            if !isPro {
+                errorMessage = "復元できる購入が見つかりませんでした。"
+            }
+        } catch {
+            errorMessage = "購入の復元を完了できませんでした。もう一度お試しください。"
+        }
+    }
+
+    var canSaveToLibrary: Bool {
+        isPro || LibraryStore.shared.entries.count < Self.freeLibraryLimit
+    }
+
+    var librarySlotsRemaining: Int {
+        guard !isPro else { return .max }
+        return max(0, Self.freeLibraryLimit - LibraryStore.shared.entries.count)
+    }
+
+    var exportsRemainingToday: Int {
+        guard !isPro else { return .max }
+        return max(0, Self.freeDailyExportLimit - exportsUsedToday)
+    }
+
+    var canExport: Bool {
+        isPro || exportsRemainingToday > 0
+    }
+
+    func recordExport() {
+        guard !isPro else { return }
+        let count = exportsUsedToday
+        let today = Self.dayFormatter.string(from: Date())
+        defaults.set(today, forKey: "proStore.exportDay")
+        defaults.set(count + 1, forKey: "proStore.exportCount")
+    }
+
+    func dismissError() {
+        errorMessage = nil
+    }
+
+    private var exportsUsedToday: Int {
+        let today = Self.dayFormatter.string(from: Date())
+        guard defaults.string(forKey: "proStore.exportDay") == today else {
+            return 0
+        }
+        return defaults.integer(forKey: "proStore.exportCount")
+    }
+
+    private func refreshEntitlements() async {
+        var hasPro = false
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else { continue }
+            if transaction.productID == Self.productID, transaction.revocationDate == nil {
+                hasPro = true
+            }
+        }
+        isPro = hasPro
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+}
+
+private struct ProUpgradeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appTheme) private var theme
+    @Bindable var store: ProStore
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 36, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+
+                Text("レトロサウンド Pro")
+                    .font(.title2.bold())
+                    .foregroundStyle(theme.primaryText)
+
+                Text("ライブラリ保存とWAV書き出し・共有を、回数を気にせず使えます。")
+                    .foregroundStyle(theme.secondaryText)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("ライブラリ保存が無制限", systemImage: "bookmark.fill")
+                    Label("WAV書き出し・共有が無制限", systemImage: "waveform")
+                    Label("買い切り・広告なし", systemImage: "checkmark.seal.fill")
+                }
+                .foregroundStyle(theme.primaryText)
+
+                Spacer()
+
+                if store.isPro {
+                    Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(theme.accent)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Button {
+                        Task { await store.purchase() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if store.isPurchasing {
+                                ProgressView().tint(.black)
+                            } else {
+                                Text(store.product.map { "\($0.displayPrice)でProにする" } ?? "Proにする")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.accent)
+                    .disabled(store.isPurchasing || store.isLoading)
+
+                    Button("購入を復元") {
+                        Task { await store.restore() }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(theme.accent)
+                    .frame(maxWidth: .infinity)
+                    .disabled(store.isPurchasing)
+                }
+            }
+            .padding(24)
+            .navigationTitle("Proにアップグレード")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                }
+            }
+            .alert("購入情報", isPresented: Binding(
+                get: { store.errorMessage != nil },
+                set: { if !$0 { store.dismissError() } }
+            )) {
+                Button("OK", role: .cancel) { store.dismissError() }
+            } message: {
+                Text(store.errorMessage ?? "")
+            }
+        }
+    }
+}
+
 struct StudioView: View {
     @Environment(\.appTheme) private var theme
     let soundType: SoundType
@@ -287,6 +516,8 @@ struct StudioView: View {
 
     @State private var monitor = PlaybackMonitor()
     @State private var library = LibraryStore.shared
+    @State private var proStore = ProStore.shared
+    @State private var showProUpgrade = false
 
     @State private var sfxPitch: Double = 1
     @State private var sfxTimbre: Double = 0.5
@@ -416,6 +647,9 @@ struct StudioView: View {
                     ShareSheet(items: [exportURL])
                 }
             }
+            .sheet(isPresented: $showProUpgrade) {
+                ProUpgradeSheet(store: proStore)
+            }
             .overlay { generatingOverlay }
             .animation(.easeOut(duration: 0.15), value: operationState.showsGeneratingOverlay)
     }
@@ -436,12 +670,18 @@ struct StudioView: View {
                 Button {
                     saveLibrary()
                 } label: {
-                    Label("ライブラリに保存", systemImage: "bookmark")
+                    Label(
+                        proStore.isPro ? "ライブラリに保存" : "ライブラリに保存（残り \(proStore.librarySlotsRemaining) 件）",
+                        systemImage: "bookmark"
+                    )
                 }
                 Button {
                     exportAndShare()
                 } label: {
-                    Label("WAVを書き出して共有", systemImage: "square.and.arrow.up")
+                    Label(
+                        proStore.isPro ? "WAVを書き出して共有" : "WAVを書き出して共有（残り \(proStore.exportsRemainingToday) 回）",
+                        systemImage: "square.and.arrow.up"
+                    )
                 }
             } label: {
                 Image(systemName: "square.and.arrow.up")
@@ -1477,6 +1717,10 @@ struct StudioView: View {
     }
 
     private func exportAndShareAsync() async {
+        guard proStore.canExport else {
+            showProUpgrade = true
+            return
+        }
         let operationID = operationState.begin(kind: .export)
         defer { operationState.end(operationID) }
         do {
@@ -1484,6 +1728,7 @@ struct StudioView: View {
             let intent = currentIntent()
             let url = try await generationViewModel.export(recipe: mapped, intent: intent)
             exportURL = url
+            proStore.recordExport()
             showShareSheet = true
         } catch is CancellationError {
             return
@@ -1512,6 +1757,10 @@ struct StudioView: View {
     }
 
     private func saveLibrary() {
+        guard proStore.canSaveToLibrary else {
+            showProUpgrade = true
+            return
+        }
         run {
             let currentRecipe = try resolvedRecipeForCurrentControls()
             // Persist a file reference only when the most recently exported buffer
@@ -1832,6 +2081,8 @@ struct LibraryView: View {
 
 struct SettingsView: View {
     @Environment(\.appTheme) private var theme
+    @State private var proStore = ProStore.shared
+    @State private var showProUpgrade = false
     @AppStorage("appThemeID") private var themeIDRaw = AppThemeID.lime.rawValue
     @AppStorage("appThemeRandomPick") private var themeRandomPick = AppThemeID.lime.rawValue
 
@@ -1861,6 +2112,26 @@ struct SettingsView: View {
             }
             .themedListRowBackground(theme)
 
+            Section("レトロサウンド Pro") {
+                if proStore.isPro {
+                    Label("Proをご利用中です", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(theme.accent)
+                } else {
+                    Text("無料版はライブラリ保存10件、WAV書き出し・共有は1日3回までです。")
+                        .font(.footnote)
+                        .foregroundStyle(theme.secondaryText)
+                    Button("Proにアップグレード") {
+                        showProUpgrade = true
+                    }
+                    .foregroundStyle(theme.accent)
+                    Button("購入を復元") {
+                        Task { await proStore.restore() }
+                    }
+                    .foregroundStyle(theme.accent)
+                }
+            }
+            .themedListRowBackground(theme)
+
             Section("アプリ") {
                 LabeledContent("バージョン", value: appVersion)
             }
@@ -1880,6 +2151,17 @@ struct SettingsView: View {
         }
         .navigationTitle("設定")
         .themedListBackground(theme)
+        .sheet(isPresented: $showProUpgrade) {
+            ProUpgradeSheet(store: proStore)
+        }
+        .alert("購入情報", isPresented: Binding(
+            get: { proStore.errorMessage != nil },
+            set: { if !$0 { proStore.dismissError() } }
+        )) {
+            Button("OK", role: .cancel) { proStore.dismissError() }
+        } message: {
+            Text(proStore.errorMessage ?? "")
+        }
     }
 
     private func selectTheme(_ option: AppThemeID) {

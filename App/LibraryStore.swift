@@ -65,9 +65,6 @@ final class LibraryStore: ObservableObject {
         }
         let previous = entries
         entries.insert(LibraryEntry(intent: next, exportFileName: exportFileName), at: 0)
-        if entries.count > 50 {
-            entries = Array(entries.prefix(50))
-        }
         do {
             try persist()
         } catch {
