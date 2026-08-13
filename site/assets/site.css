@@ -116,7 +116,14 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
   .container { width: min(100% - 30px, 1120px); }
   .nav { padding-block: 14px; align-items: flex-start; flex-direction: column; gap: 10px; }
   .brand-logo { height: 84px; margin-block: -26px; }
-  .nav-links { gap: 14px; }
+  .nav-links {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: .78rem;
+    white-space: nowrap;
+  }
   .hero { min-height: 540px; }
   .hero-poster { width: 66vw; opacity: .4; }
   .hero-content { padding-block: 74px; }
