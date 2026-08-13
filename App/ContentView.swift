@@ -739,7 +739,7 @@ struct StudioView: View {
                     exportAndShare()
                 } label: {
                     Label(
-                        proStore.isPro ? "WAVを書き出して共有" : "WAVを書き出して共有（残り \(proStore.exportsRemainingToday) 回）",
+                        proStore.isPro ? "WAVを書き出して共有" : "WAVを書き出して共有（本日あと \(proStore.exportsRemainingToday) 回）",
                         systemImage: "square.and.arrow.up"
                     )
                 }
