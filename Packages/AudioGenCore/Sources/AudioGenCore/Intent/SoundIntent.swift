@@ -24,6 +24,8 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
     public var lengthId: String
     /// BGM only. Ignored for SFX. Defaults by scene when empty.
     public var instrumentId: String?
+    /// BGM only. 0 = surprising, 1 = stable. Nil uses the engine default.
+    public var melodicCoherence: Float?
     public var seed: UInt64?
 
     public var id: String {
@@ -34,6 +36,7 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
             moodId,
             lengthId,
             instrumentId ?? "",
+            melodicCoherence.map { String($0) } ?? "default",
             seed.map(String.init) ?? "nil",
         ].joined(separator: "|")
     }
@@ -46,6 +49,7 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
         moodId: String = Catalog.Mood.neutral.rawValue,
         lengthId: String = "",
         instrumentId: String? = nil,
+        melodicCoherence: Float? = nil,
         seed: UInt64? = nil
     ) {
         self.version = 1
@@ -58,11 +62,13 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
             ? (soundType == .bgm ? Catalog.BGMLength.bars8.rawValue : Catalog.SFXLength.medium.rawValue)
             : lengthId
         self.instrumentId = instrumentId
+        self.melodicCoherence = melodicCoherence.map { min(1, max(0, $0)) }
         self.seed = seed
     }
 
     enum CodingKeys: String, CodingKey {
-        case version, soundType, genreId, sceneId, purposeId, moodId, lengthId, instrumentId, seed
+        case version, soundType, genreId, sceneId, purposeId, moodId, lengthId, instrumentId
+        case melodicCoherence, seed
     }
 
     public init(from decoder: Decoder) throws {
@@ -75,6 +81,8 @@ public struct SoundIntent: Codable, Equatable, Sendable, Identifiable {
         moodId = try c.decode(String.self, forKey: .moodId)
         lengthId = try c.decode(String.self, forKey: .lengthId)
         instrumentId = try c.decodeIfPresent(String.self, forKey: .instrumentId)
+        melodicCoherence = try c.decodeIfPresent(Float.self, forKey: .melodicCoherence)
+            .map { min(1, max(0, $0)) }
         seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
     }
 

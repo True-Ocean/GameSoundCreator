@@ -45,7 +45,8 @@ public struct BGMEngine: Sendable {
             melodyChanceScale: instrument.melodyChanceScale,
             seed: recipe.params.seed,
             sceneBias: sceneBias,
-            style: compositionStyle
+            style: compositionStyle,
+            melodicCoherence: recipe.params.melodicCoherence
         )
         var rng = SeededGenerator(seed: recipe.params.seed)
         let kickPatternID = Int(rng.unit() * 5)
@@ -182,7 +183,8 @@ public struct BGMEngine: Sendable {
             melodyChanceScale: instrument.melodyChanceScale,
             seed: recipe.params.seed,
             sceneBias: sceneBias,
-            style: compositionStyle
+            style: compositionStyle,
+            melodicCoherence: recipe.params.melodicCoherence
         )
         var melodyStarts: [Int: [MelodyNote]] = [:]
         for note in melodyPlan.notes {

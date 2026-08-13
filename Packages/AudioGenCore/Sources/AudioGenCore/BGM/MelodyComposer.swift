@@ -98,8 +98,10 @@ public enum MelodyComposer {
         melodyChanceScale: Float,
         seed: UInt64,
         sceneBias: MotifSceneBias = .general,
-        style: BGMCompositionStyle? = nil
+        style: BGMCompositionStyle? = nil,
+        melodicCoherence: Float = BGMParams.defaultMelodicCoherence
     ) -> MelodyPlan {
+        let coherence = min(1, max(0, melodicCoherence))
         let naturalForm = MelodyForm.forBarCount(bars)
         // Even the shortest BGM can become a clear question/answer rather than
         // repeating a two-bar idea when that composition style is selected.
@@ -161,6 +163,7 @@ public enum MelodyComposer {
             motifBars: motifBars,
             keepChance: keepChance,
             mood: mood,
+            melodicCoherence: coherence,
             rng: &rng
         )
 
@@ -172,6 +175,7 @@ public enum MelodyComposer {
             motifBars: motifBars,
             keepChance: min(0.98, keepChance + 0.08),
             mood: mood,
+            melodicCoherence: coherence,
             rng: &rng
         )
 
@@ -202,15 +206,24 @@ public enum MelodyComposer {
                 var rel = sanitizeRelative(event.rel + degreeBias, mood: mood)
                 // Keep intentional openings; only gently snap later strong beats.
                 let isOpening = bar == 0 && event.step == events.first?.step
-                if event.step % 4 == 0, !isOpening {
+                let strongBeat = event.step % 4 == 0
+                if strongBeat,
+                   !isOpening,
+                   rng.unit() < chordTonePreference(coherence: coherence) {
                     rel = preferChordTone(rel, strongBeat: true, mood: mood)
                 }
-                let degree = smoothPhraseDegree(
+                let voicedDegree = smoothPhraseDegree(
                     target: chordDegree + rel,
                     previous: previousDegree,
                     chordDegree: chordDegree,
-                    strongBeat: event.step % 4 == 0,
+                    strongBeat: strongBeat,
                     phraseEnding: isLastBarInSection && eventIndex == events.count - 1,
+                    mood: mood,
+                    melodicCoherence: coherence,
+                    rng: &rng
+                )
+                let degree = chordDegree + sanitizeRelative(
+                    voicedDegree - chordDegree,
                     mood: mood
                 )
                 notes.append(
@@ -326,28 +339,70 @@ public enum MelodyComposer {
         chordDegree: Int,
         strongBeat: Bool,
         phraseEnding: Bool,
-        mood: Catalog.Mood
+        mood: Catalog.Mood,
+        melodicCoherence: Float,
+        rng: inout SeededGenerator
     ) -> Int {
         guard let previous else { return target }
-        let maxStep = mood == .tense && !phraseEnding ? 3 : 2
+        let coherence = min(1, max(0, melodicCoherence))
+        let chordTones = Set(chordToneCandidates(chordDegree: chordDegree, tones: [0, 2, 4]))
+        let stableTones = Set(chordToneCandidates(chordDegree: chordDegree, tones: [0, 2]))
 
-        if phraseEnding {
-            let landing = nearestStableChordTone(to: previous, chordDegree: chordDegree)
-            if abs(landing - previous) <= maxStep { return landing }
-            return previous + (landing > previous ? maxStep : -maxStep)
+        var rawCandidates = Set(((-5)...5).map { previous + $0 })
+        rawCandidates.insert(target)
+        rawCandidates.formUnion(chordTones)
+        let lowerBound = chordDegree - 7
+        let upperBound = mood == .dark ? chordDegree + 5 : chordDegree + 11
+        var candidates = Set(rawCandidates.map { candidate in
+            chordDegree + sanitizeRelative(candidate - chordDegree, mood: mood)
+        }).filter { $0 >= lowerBound && $0 <= upperBound }
+
+        if coherence >= 0.55 {
+            let maxInterval = coherence >= 0.8 ? 2 : 3
+            candidates = candidates.filter { abs($0 - previous) <= maxInterval }
         }
 
-        let anchoredTarget = strongBeat
-            ? nearestChordTone(to: target, chordDegree: chordDegree)
-            : target
-        let delta = anchoredTarget - previous
-        guard abs(delta) > maxStep else { return anchoredTarget }
-        return previous + (delta > 0 ? maxStep : -maxStep)
-    }
+        // Stable and standard modes always close a section on the root or third.
+        // The surprising mode can occasionally defer that resolution.
+        if phraseEnding, coherence >= 0.55 {
+            candidates = candidates.filter { stableTones.contains($0) }
+            if candidates.isEmpty {
+                return nearestStableChordTone(to: previous, chordDegree: chordDegree)
+            }
+        }
 
-    private static func nearestChordTone(to degree: Int, chordDegree: Int) -> Int {
-        chordToneCandidates(chordDegree: chordDegree, tones: [0, 2, 4])
-            .min(by: { abs($0 - degree) < abs($1 - degree) }) ?? degree
+        let scored = candidates.sorted().map { candidate -> (degree: Int, score: Double) in
+            let interval = abs(candidate - previous)
+            let targetDistance = abs(candidate - target)
+            var score = -Double(targetDistance) * Double(1.25 - 0.55 * coherence)
+            score -= Double(interval) * Double(0.15 + 1.25 * coherence)
+
+            if interval == 1 || interval == 2 {
+                score += Double(1.3 * coherence)
+            } else if interval == 0 {
+                score -= Double(0.45 + 0.35 * coherence)
+            } else if interval >= 3 {
+                score += Double((1 - coherence) * 1.5)
+            }
+
+            if strongBeat, chordTones.contains(candidate) {
+                score += Double(0.6 + 2.6 * coherence)
+            }
+            if phraseEnding {
+                if stableTones.contains(candidate) {
+                    score += Double(2 + 4 * coherence)
+                } else if chordTones.contains(candidate) {
+                    score += Double(0.8 + coherence)
+                } else {
+                    score -= Double(2.5 * coherence)
+                }
+            }
+            return (candidate, score)
+        }
+
+        let temperature = Double(0.18 + (1 - coherence) * 0.65)
+        let selected = weightedDegreeChoice(scored, temperature: temperature, rng: &rng) ?? target
+        return mood == .dark ? min(selected, chordDegree + 5) : selected
     }
 
     private static func nearestStableChordTone(to degree: Int, chordDegree: Int) -> Int {
@@ -359,6 +414,36 @@ public enum MelodyComposer {
         (-2...2).flatMap { octave in
             tones.map { chordDegree + $0 + octave * 7 }
         }
+    }
+
+    private static func chordTonePreference(coherence: Float) -> Float {
+        min(0.98, max(0.2, 0.25 + 0.72 * coherence))
+    }
+
+    private static func weightedDegreeChoice(
+        _ candidates: [(degree: Int, score: Double)],
+        temperature: Double,
+        rng: inout SeededGenerator
+    ) -> Int? {
+        guard let maxScore = candidates.map(\.score).max() else { return nil }
+        let safeTemperature = max(0.05, temperature)
+        let weighted = candidates.map { candidate in
+            (
+                degree: candidate.degree,
+                weight: exp((candidate.score - maxScore) / safeTemperature)
+            )
+        }
+        let total = weighted.reduce(0.0) { $0 + $1.weight }
+        guard total.isFinite, total > 0 else {
+            return candidates.max(by: { $0.score < $1.score })?.degree
+        }
+        let threshold = Double(rng.unit()) * total
+        var cumulative = 0.0
+        for candidate in weighted {
+            cumulative += candidate.weight
+            if threshold <= cumulative { return candidate.degree }
+        }
+        return weighted.last?.degree
     }
 
     /// 転: keep register mild; contrast via articulation, rests, and energy.
@@ -420,6 +505,7 @@ public enum MelodyComposer {
         motifBars: Int,
         keepChance: Float,
         mood: Catalog.Mood,
+        melodicCoherence: Float,
         rng: inout SeededGenerator
     ) -> [MotifEvent] {
         var motifEvents: [MotifEvent] = []
@@ -440,19 +526,26 @@ public enum MelodyComposer {
                 }
                 let strong = hit.step % 4 == 0
                 // Anchor already chose a chord-tone family; keep it. Soft-snap others.
-                let snapped = isAnchor ? relRaw : preferChordTone(relRaw, strongBeat: strong, mood: mood)
+                let shouldSnap = strong && rng.unit() < chordTonePreference(coherence: melodicCoherence)
+                let snapped = isAnchor || !shouldSnap
+                    ? relRaw
+                    : preferChordTone(relRaw, strongBeat: true, mood: mood)
                 var rel = sanitizeRelative(snapped, mood: mood)
 
                 // Step 3: singable motion — step limits, leap recovery.
                 if let prev = previousRel {
                     if let leapDir = pendingLeapDirection {
-                        rel = sanitizeRelative(prev - leapDir, mood: mood)
+                        let recoveryChance = min(0.98, 0.38 + 0.6 * melodicCoherence)
+                        if rng.unit() < recoveryChance {
+                            rel = sanitizeRelative(prev - leapDir, mood: mood)
+                        }
                         pendingLeapDirection = nil
                     } else {
                         let stepped = constrainMelodicStep(
                             from: prev,
                             toward: rel,
                             mood: mood,
+                            melodicCoherence: melodicCoherence,
                             rng: &rng
                         )
                         rel = sanitizeRelative(stepped, mood: mood)
@@ -489,8 +582,11 @@ public enum MelodyComposer {
                 MotifEvent(barOffset: 0, step: first.step, duration: first.duration, rel: startDegree, velocity: 1)
             )
         }
-        // Phrase ending prefers a stable tone (root / third).
-        if motifEvents.count >= 2, var last = motifEvents.last {
+        // Motif endings usually prefer a stable chord tone.
+        let endingResolutionChance = min(0.98, 0.3 + 0.68 * melodicCoherence)
+        if motifEvents.count >= 2,
+           rng.unit() < endingResolutionChance,
+           var last = motifEvents.last {
             last.rel = stablePhraseEnding(last.rel, mood: mood)
             motifEvents[motifEvents.count - 1] = last
         }
@@ -502,6 +598,7 @@ public enum MelodyComposer {
         from previous: Int,
         toward target: Int,
         mood: Catalog.Mood,
+        melodicCoherence: Float,
         rng: inout SeededGenerator
     ) -> Int {
         let maxStep: Int
@@ -521,12 +618,17 @@ public enum MelodyComposer {
             leapChance = 0.32
         }
         let delta = target - previous
-        if abs(delta) <= maxStep { return target }
-        if rng.unit() < leapChance {
+        let adjustedMaxStep = melodicCoherence < 0.55 ? max(maxStep, 3) : maxStep
+        let adjustedLeapChance = min(
+            0.78,
+            max(0.02, leapChance + (BGMParams.defaultMelodicCoherence - melodicCoherence) * 1.05)
+        )
+        if abs(delta) <= adjustedMaxStep { return target }
+        if rng.unit() < adjustedLeapChance {
             // Occasional expressive leap (resolved on the next note).
             return target
         }
-        return previous + (delta > 0 ? maxStep : -maxStep)
+        return previous + (delta > 0 ? adjustedMaxStep : -adjustedMaxStep)
     }
 
     private static func stablePhraseEnding(_ relative: Int, mood: Catalog.Mood) -> Int {

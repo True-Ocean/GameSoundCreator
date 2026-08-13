@@ -107,6 +107,9 @@ public struct IntentMapper: Sendable {
             instrument = Catalog.Instrument.defaultFor(scene: scene)
         }
         recipe.params.instrumentId = instrument.rawValue
+        if let melodicCoherence = intent.melodicCoherence {
+            recipe.params.melodicCoherence = melodicCoherence
+        }
 
         return recipe
     }

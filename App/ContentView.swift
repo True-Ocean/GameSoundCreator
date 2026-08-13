@@ -507,6 +507,32 @@ private struct ProUpgradeSheet: View {
     }
 }
 
+private enum BGMMelodicCoherencePreset: String, CaseIterable {
+    case surprising
+    case balanced
+    case stable
+
+    var title: String {
+        switch self {
+        case .surprising: return "意外"
+        case .balanced: return "標準"
+        case .stable: return "安定"
+        }
+    }
+
+    var value: Double {
+        switch self {
+        case .surprising: return 0.45
+        case .balanced: return Double(BGMParams.defaultMelodicCoherence)
+        case .stable: return 0.85
+        }
+    }
+
+    static func nearest(to value: Double) -> BGMMelodicCoherencePreset {
+        allCases.min(by: { abs($0.value - value) < abs($1.value - value) }) ?? .balanced
+    }
+}
+
 struct StudioView: View {
     @Environment(\.appTheme) private var theme
     let soundType: SoundType
@@ -551,6 +577,7 @@ struct StudioView: View {
     @State private var bgmPitch: Double = 0
     @State private var bgmRhythm: Double = 0.5
     @State private var bgmMelody = true
+    @State private var bgmMelodicCoherence = Double(BGMParams.defaultMelodicCoherence)
     /// Tempo for the current scene's default mood (set on scene apply / generate sync).
     @State private var bgmSceneDefaultTempo: Double?
 
@@ -629,6 +656,9 @@ struct StudioView: View {
             _purposeGroup = State(initialValue: purpose.group)
         }
         if intent.soundType == .bgm {
+            _bgmMelodicCoherence = State(
+                initialValue: Double(intent.melodicCoherence ?? BGMParams.defaultMelodicCoherence)
+            )
             let instrument = Catalog.Instrument.resolve(intent.instrumentId).rawValue
             let defaultMood = scene.defaultMood.rawValue
             if let tempo = Self.mappedBGMTempo(
@@ -786,6 +816,7 @@ struct StudioView: View {
             .onChange(of: bgmPitch) { _, _ in scheduleFineTune() }
             .onChange(of: bgmRhythm) { _, _ in scheduleFineTune() }
             .onChange(of: bgmMelody) { _, _ in scheduleFineTune() }
+            .onChange(of: bgmMelodicCoherence) { _, _ in scheduleFineTune() }
     }
 
     private func handleStudioAppear() {
@@ -997,7 +1028,7 @@ struct StudioView: View {
                     compactSlider("リズム", value: $bgmRhythm, range: 0...1)
                 }
 
-                studioToggleRow(title: "メロディ", isOn: $bgmMelody)
+                bgmMelodyRow
 
                 studioResetDefaultsButton(action: resetBGMToDefaults)
             }
@@ -1162,6 +1193,56 @@ struct StudioView: View {
             .font(.subheadline)
         }
         .frame(minHeight: 32)
+    }
+
+    /// Melody enablement and character share one compact row so the studio
+    /// remains a non-scrolling, single-screen workflow on iPhone.
+    private var bgmMelodyRow: some View {
+        HStack(spacing: 10) {
+            studioParamLabel("メロディ")
+            Toggle(isOn: $bgmMelody) {
+                EmptyView()
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .accessibilityLabel("メロディ")
+
+            Spacer(minLength: 4)
+
+            Text("自然さ")
+                .font(.caption)
+                .foregroundStyle(theme.secondaryText)
+
+            Menu {
+                Picker("旋律の自然さ", selection: bgmMelodicCoherencePresetBinding) {
+                    ForEach(BGMMelodicCoherencePreset.allCases, id: \.self) { preset in
+                        Text(preset.title).tag(preset.rawValue)
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(BGMMelodicCoherencePreset.nearest(to: bgmMelodicCoherence).title)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(theme.accent)
+            }
+            .disabled(!bgmMelody)
+            .opacity(bgmMelody ? 1 : 0.45)
+            .accessibilityLabel("旋律の自然さ")
+            .accessibilityValue(BGMMelodicCoherencePreset.nearest(to: bgmMelodicCoherence).title)
+        }
+        .frame(minHeight: 32)
+    }
+
+    private var bgmMelodicCoherencePresetBinding: Binding<String> {
+        Binding(
+            get: { BGMMelodicCoherencePreset.nearest(to: bgmMelodicCoherence).rawValue },
+            set: { rawValue in
+                guard let preset = BGMMelodicCoherencePreset(rawValue: rawValue) else { return }
+                bgmMelodicCoherence = preset.value
+            }
+        )
     }
 
     // MARK: Catalog bindings
@@ -1361,6 +1442,7 @@ struct StudioView: View {
         bgmPitch = 0
         bgmRhythm = 0.5
         bgmMelody = true
+        bgmMelodicCoherence = Double(BGMParams.defaultMelodicCoherence)
         if let tempo = Self.mappedBGMTempo(
             genreId: genreId,
             sceneId: scene.rawValue,
@@ -1461,6 +1543,7 @@ struct StudioView: View {
         let targetPitch = 0.0
         let targetRhythm = 0.5
         let targetMelody = true
+        let targetMelodicCoherence = Double(BGMParams.defaultMelodicCoherence)
         let targetTempo =
             bgmSceneDefaultTempo
             ?? Self.mappedBGMTempo(
@@ -1477,6 +1560,7 @@ struct StudioView: View {
             && bgmPitch == targetPitch
             && bgmRhythm == targetRhythm
             && bgmMelody == targetMelody
+            && bgmMelodicCoherence == targetMelodicCoherence
             && Int(bgmTempo.rounded()) == Int(targetTempo.rounded())
         guard !alreadyDefault else {
             hapticMedium()
@@ -1490,6 +1574,7 @@ struct StudioView: View {
         bgmPitch = targetPitch
         bgmRhythm = targetRhythm
         bgmMelody = targetMelody
+        bgmMelodicCoherence = targetMelodicCoherence
         bgmTempo = targetTempo
         bgmSceneDefaultTempo = targetTempo
         Task { @MainActor in suppressFineTuneReact = false }
@@ -1497,7 +1582,7 @@ struct StudioView: View {
         fineTuneTask?.cancel()
         if wasPlaying, mapped != nil, !catalogDirty {
             fineTuneTask = Task { @MainActor in
-                startLiveBGMReload(preservePitchRhythmMelody: false)
+                startLiveBGMReload(preserveFineTune: false)
             }
         } else {
             catalogDirty = true
@@ -1510,40 +1595,44 @@ struct StudioView: View {
         recipe.params.pitchSemitones = Int(bgmPitch.rounded())
         recipe.params.rhythm = Float(bgmRhythm)
         recipe.params.melody = bgmMelody
+        recipe.params.melodicCoherence = Float(bgmMelodicCoherence)
         recipe.params.instrumentId = Catalog.Instrument.resolve(instrumentId).rawValue
         mapped = .bgm(recipe)
     }
 
-    private func startLiveBGMReload(preservePitchRhythmMelody: Bool = true) {
+    private func startLiveBGMReload(preserveFineTune: Bool = true) {
         generationViewModel.startPlayback(
             showsGeneratingOverlay: true,
             work: {
                 try await reloadBGMFromIntentLive(
-                    preservePitchRhythmMelody: preservePitchRhythmMelody
+                    preserveFineTune: preserveFineTune
                 )
             },
             onError: presentError
         )
     }
 
-    private func reloadBGMFromIntentLive(preservePitchRhythmMelody: Bool = true) async throws {
+    private func reloadBGMFromIntentLive(preserveFineTune: Bool = true) async throws {
         let intent = currentIntent()
         let savedPitch = bgmPitch
         let savedRhythm = bgmRhythm
         let savedMelody = bgmMelody
+        let savedMelodicCoherence = bgmMelodicCoherence
         let mappedRecipe = try service.map(intent)
         try Task.checkCancellation()
         mapped = mappedRecipe
         syncFineTuneFromMapped(mappedRecipe)
-        if preservePitchRhythmMelody {
-            // Keep fine-tune pitch/rhythm/melody across mood-driven remaps.
+        if preserveFineTune {
+            // Keep fine-tune controls across mood-driven remaps.
             bgmPitch = savedPitch
             bgmRhythm = savedRhythm
             bgmMelody = savedMelody
+            bgmMelodicCoherence = savedMelodicCoherence
         } else {
             bgmPitch = 0
             bgmRhythm = 0.5
             bgmMelody = true
+            bgmMelodicCoherence = Double(BGMParams.defaultMelodicCoherence)
         }
         applyCurrentBGMParamsToMapped()
         guard let mapped else { throw AudioPlayerError.emptyBuffer }
@@ -1691,6 +1780,7 @@ struct StudioView: View {
             moodId: moodId,
             lengthId: lengthId,
             instrumentId: soundType == .bgm ? instrumentId : nil,
+            melodicCoherence: soundType == .bgm ? Float(bgmMelodicCoherence) : nil,
             seed: seed
         )
     }
@@ -1725,6 +1815,7 @@ struct StudioView: View {
                 let savedPitch = bgmPitch
                 let savedRhythm = bgmRhythm
                 let savedMelody = bgmMelody
+                let savedMelodicCoherence = bgmMelodicCoherence
                 let savedInstrument = instrumentId
                 let mappedRecipe = try service.map(intent)
                 try Task.checkCancellation()
@@ -1734,6 +1825,7 @@ struct StudioView: View {
                     bgmPitch = savedPitch
                     bgmRhythm = savedRhythm
                     bgmMelody = savedMelody
+                    bgmMelodicCoherence = savedMelodicCoherence
                     instrumentId = savedInstrument
                 } else {
                     syncFineTuneFromMapped(mappedRecipe)
@@ -1787,6 +1879,7 @@ struct StudioView: View {
             recipe.params.pitchSemitones = Int(bgmPitch.rounded())
             recipe.params.rhythm = Float(bgmRhythm)
             recipe.params.melody = bgmMelody
+            recipe.params.melodicCoherence = Float(bgmMelodicCoherence)
             recipe.params.instrumentId = Catalog.Instrument.resolve(instrumentId).rawValue
             current = .bgm(recipe)
         }
@@ -1892,6 +1985,7 @@ struct StudioView: View {
             bgmPitch = Double(recipe.params.pitchSemitones)
             bgmRhythm = Double(recipe.params.rhythm)
             bgmMelody = recipe.params.melody
+            bgmMelodicCoherence = Double(recipe.params.melodicCoherence)
             instrumentId = recipe.params.instrumentId
             if let scene = Catalog.BGMScene.resolve(sceneId),
                moodId == scene.defaultMood.rawValue {

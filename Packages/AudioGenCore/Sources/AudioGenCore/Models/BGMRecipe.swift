@@ -90,6 +90,8 @@ public enum BGMPreset: String, Codable, CaseIterable, Sendable, Identifiable {
 }
 
 public struct BGMParams: Codable, Equatable, Sendable {
+    public static let defaultMelodicCoherence: Float = 0.7
+
     public var seed: UInt64
     public var tempoBpm: Int
     public var key: MusicalKey
@@ -109,6 +111,8 @@ public struct BGMParams: Codable, Equatable, Sendable {
     public var pitchSemitones: Int
     /// Fine-tune rhythmic density (0 = sparse drums/chords, 1 = busy).
     public var rhythm: Float
+    /// 0 = surprising motion, 1 = stable / predictable motion.
+    public var melodicCoherence: Float
 
     public init(
         seed: UInt64 = 1,
@@ -122,7 +126,8 @@ public struct BGMParams: Codable, Equatable, Sendable {
         brightness: Float = 0.5,
         instrumentId: String = Catalog.Instrument.leadSynth.rawValue,
         pitchSemitones: Int = 0,
-        rhythm: Float = 0.5
+        rhythm: Float = 0.5,
+        melodicCoherence: Float = BGMParams.defaultMelodicCoherence
     ) {
         self.seed = seed
         self.tempoBpm = min(160, max(80, tempoBpm))
@@ -136,11 +141,12 @@ public struct BGMParams: Codable, Equatable, Sendable {
         self.instrumentId = Catalog.Instrument.resolve(instrumentId).rawValue
         self.pitchSemitones = min(6, max(-6, pitchSemitones))
         self.rhythm = min(1, max(0, rhythm))
+        self.melodicCoherence = min(1, max(0, melodicCoherence))
     }
 
     enum CodingKeys: String, CodingKey {
         case seed, tempoBpm, key, bars, density, energy, melody, moodId, brightness, instrumentId
-        case pitchSemitones, rhythm
+        case pitchSemitones, rhythm, melodicCoherence
     }
 
     public init(from decoder: Decoder) throws {
@@ -157,6 +163,14 @@ public struct BGMParams: Codable, Equatable, Sendable {
         instrumentId = Catalog.Instrument.resolve(try c.decodeIfPresent(String.self, forKey: .instrumentId)).rawValue
         pitchSemitones = min(6, max(-6, try c.decodeIfPresent(Int.self, forKey: .pitchSemitones) ?? 0))
         rhythm = min(1, max(0, try c.decodeIfPresent(Float.self, forKey: .rhythm) ?? 0.5))
+        melodicCoherence = min(
+            1,
+            max(
+                0,
+                try c.decodeIfPresent(Float.self, forKey: .melodicCoherence)
+                    ?? BGMParams.defaultMelodicCoherence
+            )
+        )
     }
 }
 

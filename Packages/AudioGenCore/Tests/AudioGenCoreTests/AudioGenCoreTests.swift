@@ -241,6 +241,24 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(recipe.params.bars, 8)
     }
 
+    func testIntentMelodicCoherenceRoundTripsAndMapsToRecipe() throws {
+        let intent = SoundIntent(
+            soundType: .bgm,
+            sceneId: "battle_normal",
+            moodId: "tense",
+            lengthId: "bars_8",
+            melodicCoherence: 0.85,
+            seed: 77
+        )
+        let decoded = try SoundIntent.from(json: intent.jsonString())
+        XCTAssertEqual(decoded, intent)
+
+        guard case .bgm(let recipe) = try IntentMapper().map(decoded) else {
+            return XCTFail("expected bgm")
+        }
+        XCTAssertEqual(recipe.params.melodicCoherence, 0.85, accuracy: 0.001)
+    }
+
     func testBGMBufferLengthMatchesBarGrid() {
         var recipe = BGMPreset.battleNormal.makeRecipe(seed: 1)
         recipe.params.bars = 8
@@ -555,6 +573,11 @@ final class AudioGenCoreTests: XCTestCase {
         XCTAssertEqual(params.instrumentId, Catalog.Instrument.leadSynth.rawValue)
         XCTAssertEqual(params.pitchSemitones, 0)
         XCTAssertEqual(params.rhythm, 0.5, accuracy: 0.001)
+        XCTAssertEqual(
+            params.melodicCoherence,
+            BGMParams.defaultMelodicCoherence,
+            accuracy: 0.001
+        )
     }
 
     func testBGMPitchAndRhythmChangeAudibly() {
@@ -1175,6 +1198,54 @@ final class AudioGenCoreTests: XCTestCase {
         )
     }
 
+    func testMelodicCoherenceControlsPredictability() {
+        let progression = [0, 5, 2, 6]
+        var surprisingIntervals: [Int] = []
+        var stableIntervals: [Int] = []
+        var changedPlans = 0
+
+        for seed in 1...48 {
+            let surprising = MelodyComposer.compose(
+                bars: 8,
+                progression: progression,
+                density: 0.75,
+                moodId: "neutral",
+                melodyEnabled: true,
+                melodyChanceScale: 1.1,
+                seed: UInt64(seed),
+                melodicCoherence: 0.45
+            )
+            let stable = MelodyComposer.compose(
+                bars: 8,
+                progression: progression,
+                density: 0.75,
+                moodId: "neutral",
+                melodyEnabled: true,
+                melodyChanceScale: 1.1,
+                seed: UInt64(seed),
+                melodicCoherence: 0.85
+            )
+            if surprising.notes != stable.notes { changedPlans += 1 }
+
+            surprisingIntervals.append(contentsOf: melodicIntervals(in: surprising))
+            stableIntervals.append(contentsOf: melodicIntervals(in: stable))
+        }
+
+        XCTAssertGreaterThan(changedPlans, 36, "the control should have a clear effect across seeds")
+        XCTAssertGreaterThan(surprisingIntervals.count, 100)
+        XCTAssertGreaterThan(stableIntervals.count, 100)
+
+        let surprisingAverage = Double(surprisingIntervals.reduce(0, +))
+            / Double(surprisingIntervals.count)
+        let stableAverage = Double(stableIntervals.reduce(0, +))
+            / Double(stableIntervals.count)
+        XCTAssertLessThan(stableAverage, surprisingAverage)
+
+        let surprisingLeaps = surprisingIntervals.filter { $0 >= 3 }.count
+        let stableLeaps = stableIntervals.filter { $0 >= 3 }.count
+        XCTAssertLessThan(stableLeaps, surprisingLeaps)
+    }
+
     func testDarkMoodClampsSoaringRelatives() {
         let progression = [0, 4, 5, 3]
         for seed in 1...24 {
@@ -1382,6 +1453,14 @@ final class AudioGenCoreTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func melodicIntervals(in plan: MelodyPlan) -> [Int] {
+        let degrees = plan.notes
+            .sorted { ($0.bar, $0.step) < ($1.bar, $1.step) }
+            .map(\.degree)
+        guard degrees.count >= 2 else { return [] }
+        return (1..<degrees.count).map { abs(degrees[$0] - degrees[$0 - 1]) }
+    }
 
     private func assertBuffersEqual(_ a: AVAudioPCMBuffer, _ b: AVAudioPCMBuffer, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(buffersEqual(a, b), "buffers differ", file: file, line: line)
