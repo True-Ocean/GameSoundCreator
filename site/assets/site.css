@@ -201,11 +201,11 @@ section[id] { scroll-margin-top: 140px; }
 .screenshot-grid { display: flex; gap: 22px; padding-bottom: 10px; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x mandatory; scroll-padding-inline: 1px; scrollbar-width: thin; }
 .screenshot-card { flex: 0 0 clamp(210px, 22vw, 300px); scroll-snap-align: start; margin: 0; padding: 10px 10px 14px; border: 1px solid var(--line); border-radius: 22px; background: rgba(38, 34, 29, .8); box-shadow: 0 18px 36px rgba(0, 0, 0, .25); }
 .screenshot-card img { display: block; width: 100%; height: auto; border-radius: 14px; }
-.screenshot-card figcaption { padding: 12px 4px 0; color: var(--paper); font-size: .9rem; font-weight: 700; }
+.screenshot-card figcaption { padding: 12px 4px 0; color: var(--paper); font-size: .9rem; font-weight: 700; text-align: center; }
 .screenshot-card:nth-child(1) { border-color: rgba(232, 169, 56, .55); }
 .screenshot-card:nth-child(2), .screenshot-card:nth-child(5) { border-color: rgba(185, 228, 83, .55); }
-.screenshot-card:nth-child(3) { border-color: rgba(233, 109, 189, .55); }
-.screenshot-card:nth-child(4), .screenshot-card:nth-child(6) { border-color: rgba(86, 199, 233, .55); }
+.screenshot-card:nth-child(3), .screenshot-card:nth-child(6) { border-color: rgba(233, 109, 189, .55); }
+.screenshot-card:nth-child(4), .screenshot-card:nth-child(7) { border-color: rgba(86, 199, 233, .55); }
 @media (max-width: 720px) {
   .screenshot-grid { gap: 14px; margin-inline: -15px; padding: 0 15px 8px; }
   .screenshot-card { flex-basis: min(74vw, 280px); }
