@@ -69,8 +69,14 @@ public struct SFXEngine: Sendable {
             rng: &rng
         )
         apply(plan, to: &samples, sampleRate: sampleRate)
+        applyUserTimbre(&samples, timbre: recipe.params.timbre, sampleRate: sampleRate)
+        applyUserAttack(
+            &samples,
+            intensity: recipe.params.intensity,
+            sampleRate: sampleRate
+        )
         layerRepeatedHits(count: recipe.params.count, samples: &samples)
-        Mastering.apply(&samples, targetPeak: 0.82 + 0.12 * recipe.params.intensity)
+        Mastering.apply(&samples)
 
         return PCMBufferFactory().makeBuffer(
             frameCount: AVAudioFrameCount(samples.count),
@@ -220,6 +226,52 @@ public struct SFXEngine: Sendable {
             emphasizeEdges(&samples)
         case .resonant:
             addResonance(&samples, sampleRate: sampleRate)
+        }
+    }
+
+    /// Applies a deliberately broad, user-controlled tone profile after rendering.
+    private func applyUserTimbre(_ samples: inout [Float], timbre: Float, sampleRate: Double) {
+        if timbre <= 0.33 {
+            SpaceFX.applyLowpass(&samples, cutoffHz: 700, sampleRate: sampleRate)
+        } else if timbre >= 0.67 {
+            let dry = samples
+            var low = dry
+            SpaceFX.applyLowpass(&low, cutoffHz: 1_800, sampleRate: sampleRate)
+            for i in samples.indices {
+                samples[i] = SynthDSP.softClip(
+                    dry[i] + (dry[i] - low[i]) * 2.4,
+                    drive: 1.8
+                )
+            }
+        }
+    }
+
+    /// Changes the transient, rather than just loudness which mastering would normalize.
+    private func applyUserAttack(
+        _ samples: inout [Float],
+        intensity: Float,
+        sampleRate: Double
+    ) {
+        if intensity <= 0.33 {
+            // Round both the leading edge and later impacts. Only fading the first
+            // few milliseconds was inaudible for sounds whose main hit occurs later.
+            SpaceFX.applyLowpass(&samples, cutoffHz: 700, sampleRate: sampleRate)
+            let rampFrames = min(samples.count, Int(sampleRate * 0.045))
+            guard rampFrames > 1 else { return }
+            for i in 0..<rampFrames {
+                let progress = Float(i) / Float(rampFrames - 1)
+                samples[i] *= 0.08 + 0.92 * progress
+            }
+        } else if intensity >= 0.67 {
+            var previous: Float = 0
+            for i in samples.indices {
+                let current = samples[i]
+                samples[i] = SynthDSP.softClip(
+                    current * 1.5 + (current - previous) * 3.2,
+                    drive: 4.0
+                )
+                previous = current
+            }
         }
     }
 

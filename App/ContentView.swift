@@ -772,11 +772,11 @@ struct StudioView: View {
 
     private func applyFineTuneObservers<V: View>(to view: V) -> some View {
         view
-            // SFX: sliders only update params; playback is explicit via 再生 / 別パターン.
+            // SFX: controls only update params; playback is explicit via 再生 / 別パターン.
             .onChange(of: sfxDurationMs) { _, newValue in
                 guard soundType == .sfx, !suppressFineTuneReact else { return }
                 lengthId = nearestSFXLengthId(ms: Int(newValue.rounded()))
-                exportURL = nil
+                markSFXParamsEdited()
             }
             .onChange(of: sfxPitch) { _, _ in markSFXParamsEdited() }
             .onChange(of: sfxTimbre) { _, _ in markSFXParamsEdited() }
@@ -855,17 +855,23 @@ struct StudioView: View {
             Spacer(minLength: 12)
 
             VStack(spacing: 12) {
-                Picker("雰囲気", selection: sfxMoodIdBinding) {
-                    ForEach(Catalog.moods) { item in
-                        Text(item.displayName).tag(item.id)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityLabel("雰囲気")
+                studioChoiceRow(
+                    label: "雰囲気",
+                    selection: sfxMoodIdBinding,
+                    options: Catalog.moods.map { item in (item.id, item.displayName) }
+                )
+                studioChoiceRow(
+                    label: "質感",
+                    selection: sfxTimbrePresetBinding,
+                    options: [("soft", "やわらかい"), ("normal", "標準"), ("sharp", "シャープ")]
+                )
+                studioChoiceRow(
+                    label: "強弱",
+                    selection: sfxAttackPresetBinding,
+                    options: [("gentle", "弱い"), ("normal", "標準"), ("strong", "強い")]
+                )
 
                 compactSlider("高さ", value: $sfxPitch, range: 0.5...2.0)
-                compactSlider("音色", value: $sfxTimbre, range: 0...1)
-                compactSlider("強さ", value: $sfxIntensity, range: 0...1)
                 compactSlider("長さ", value: $sfxDurationMs, range: 50...1200, step: 10)
                 compactSlider("音数", value: $sfxNoteCount, range: 1...8, step: 1)
 
@@ -875,6 +881,24 @@ struct StudioView: View {
     }
 
     /// Catalog edits update state only; sound plays on 再生 / 別パターン.
+    private var sfxTimbrePresetBinding: Binding<String> {
+        Binding(
+            get: { sfxTimbre <= 0.33 ? "soft" : (sfxTimbre >= 0.67 ? "sharp" : "normal") },
+            set: { newValue in
+                sfxTimbre = newValue == "soft" ? 0.2 : (newValue == "sharp" ? 0.8 : 0.5)
+            }
+        )
+    }
+
+    private var sfxAttackPresetBinding: Binding<String> {
+        Binding(
+            get: { sfxIntensity <= 0.33 ? "gentle" : (sfxIntensity >= 0.67 ? "strong" : "normal") },
+            set: { newValue in
+                sfxIntensity = newValue == "gentle" ? 0.2 : (newValue == "strong" ? 0.8 : 0.5)
+            }
+        )
+    }
+
     private var sfxPurposeGroupBinding: Binding<String> {
         Binding(
             get: { purposeGroup },
@@ -911,7 +935,7 @@ struct StudioView: View {
                 guard newValue != moodId else { return }
                 moodId = newValue
                 suppressFineTuneReact = true
-                syncSFXSlidersFromMood()
+                syncSFXPitchFromMood()
                 Task { @MainActor in suppressFineTuneReact = false }
                 markSFXCatalogDirty()
             }
@@ -961,13 +985,11 @@ struct StudioView: View {
 
             // Fine-tune: keeps playing; regenerates in the background.
             VStack(spacing: 10) {
-                Picker("雰囲気", selection: bgmMoodIdBinding) {
-                    ForEach(Catalog.moods) { item in
-                        Text(item.displayName).tag(item.id)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityLabel("雰囲気")
+                studioChoiceRow(
+                    label: "雰囲気",
+                    selection: bgmMoodIdBinding,
+                    options: Catalog.moods.map { item in (item.id, item.displayName) }
+                )
 
                 VStack(spacing: 10) {
                     compactSlider("テンポ", value: $bgmTempo, range: 80...160, step: 1)
@@ -1040,6 +1062,48 @@ struct StudioView: View {
         .background(theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    /// Three always-visible choices keep the frequent SFX controls one tap away.
+    private func studioChoiceRow(
+        label: String,
+        selection: Binding<String>,
+        options: [(id: String, title: String)]
+    ) -> some View {
+        HStack(spacing: 10) {
+            studioParamLabel(label)
+
+            HStack(spacing: 4) {
+                ForEach(options, id: \.id) { option in
+                    let isSelected = selection.wrappedValue == option.id
+                    Button {
+                        selection.wrappedValue = option.id
+                    } label: {
+                        Text(option.title)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .frame(maxWidth: .infinity, minHeight: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(isSelected ? theme.background : theme.secondaryText)
+                    .background(
+                        isSelected ? theme.accent : theme.panel,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(
+                                isSelected ? theme.accent : theme.secondaryText.opacity(0.22),
+                                lineWidth: 1
+                            )
+                    }
+                    .accessibilityLabel("\(label)：\(option.title)")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+            }
+        }
+        .frame(minHeight: 32)
+    }
+
     /// Menu control showing the selected title (optionally centered) with a chevron.
     private func studioInlineValueMenu(
         accessibilityLabel: String,
@@ -1106,8 +1170,8 @@ struct StudioView: View {
     // BGM catalog: カテゴリ／用途／音色イメージ／長さ → 停止して再生待ち
     // BGM fine-tune: 雰囲気・テンポ／ピッチ／リズム・メロディ → 再生中は裏生成して切替
     // SFX catalog: カテゴリ／用途 → 停止して再生待ち
-    // SFX fine-tune: 雰囲気・スライダー → 次回再生時に反映
-    //   設定リセット → 雰囲気・スライダー等を用途既定へ戻す
+    // SFX fine-tune: 雰囲気・質感・強弱・スライダー → 次回再生時に反映
+    //   設定リセット → 雰囲気・質感・強弱・スライダー等を用途既定へ戻す
     //   ループ → 再生中は即反映
 
     private var bgmSceneGroupBinding: Binding<String> {
@@ -1377,7 +1441,6 @@ struct StudioView: View {
     private func resetSFXToDefaults() {
         guard soundType == .sfx else { return }
         hapticMedium()
-        let wasPlaying = monitor.isPlaying
         suppressFineTuneReact = true
         moodId = Catalog.Mood.neutral.rawValue
         syncSFXSlidersFromMood()
@@ -1388,9 +1451,6 @@ struct StudioView: View {
         sfxNoteCount = 1
         Task { @MainActor in suppressFineTuneReact = false }
         markSFXCatalogDirty()
-        if wasPlaying {
-            playNow(newSeed: false)
-        }
     }
 
     private func resetBGMToDefaults() {
@@ -1513,7 +1573,9 @@ struct StudioView: View {
         catalogDirty = true
         exportURL = nil
         fineTuneTask?.cancel()
+        generationViewModel.cancelPlayback()
         exportTask?.cancel()
+        operationState.cancel()
         service.stop()
         monitor.stopMonitoring()
     }
@@ -1522,6 +1584,10 @@ struct StudioView: View {
         guard soundType == .sfx, !suppressFineTuneReact else { return }
         exportURL = nil
         exportTask?.cancel()
+        generationViewModel.cancelPlayback()
+        operationState.cancel()
+        service.stop()
+        monitor.stopMonitoring()
     }
 
     private func syncSFXSlidersFromMood() {
@@ -1542,6 +1608,17 @@ struct StudioView: View {
             sfxPitch = 0.68
             sfxTimbre = 0.9
             sfxIntensity = 0.8
+        }
+    }
+
+    /// Mood keeps its audible pitch character without overwriting explicit
+    /// quality and attack choices.
+    private func syncSFXPitchFromMood() {
+        switch Catalog.Mood(rawValue: moodId) ?? .neutral {
+        case .bright: sfxPitch = 1.35
+        case .neutral: sfxPitch = 1.0
+        case .tense: sfxPitch = 1.12
+        case .dark: sfxPitch = 0.68
         }
     }
 

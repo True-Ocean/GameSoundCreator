@@ -60,6 +60,29 @@ final class AudioGenCoreTests: XCTestCase {
         }
     }
 
+    func testSFXUserTimbreAndAttackAreAudiblyDistant() {
+        let engine = SFXEngine()
+        for category in SFXCategory.allCases {
+            for seed: UInt64 in [1, 42, 999] {
+                let soft = engine.generate(SFXRecipe.make(category: category, seed: seed, timbre: 0.2, intensity: 0.5))
+                let sharp = engine.generate(SFXRecipe.make(category: category, seed: seed, timbre: 0.8, intensity: 0.5))
+                XCTAssertGreaterThan(
+                    meanAbsoluteDifference(soft, sharp),
+                    0.018,
+                    "quality too subtle for \(category.rawValue), seed \(seed)"
+                )
+
+                let gentle = engine.generate(SFXRecipe.make(category: category, seed: seed, timbre: 0.5, intensity: 0.2))
+                let strong = engine.generate(SFXRecipe.make(category: category, seed: seed, timbre: 0.5, intensity: 0.8))
+                XCTAssertGreaterThan(
+                    meanAbsoluteDifference(gentle, strong),
+                    0.035,
+                    "attack too subtle for \(category.rawValue), seed \(seed)"
+                )
+            }
+        }
+    }
+
     func testSFXVariationProfilesCoverDistinctNaturalCharacters() {
         let engine = SFXEngine()
         let signatures = (1...64).map { seed in
