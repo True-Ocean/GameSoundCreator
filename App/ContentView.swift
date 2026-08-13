@@ -533,6 +533,12 @@ private enum BGMMelodicCoherencePreset: String, CaseIterable {
     }
 }
 
+private struct StudioToast: Identifiable {
+    let id = UUID()
+    let message: String
+    let systemImage: String
+}
+
 struct StudioView: View {
     @Environment(\.appTheme) private var theme
     let soundType: SoundType
@@ -555,7 +561,8 @@ struct StudioView: View {
     @State private var loopEnabled = true
     @State private var errorText: String?
     @State private var showError = false
-    @State private var toast: String?
+    @State private var toast: StudioToast?
+    @State private var toastTask: Task<Void, Never>?
     @State private var showShareSheet = false
     @State private var didAppear = false
     @State private var patternFlash = false
@@ -689,7 +696,7 @@ struct StudioView: View {
             .navigationTitle(titleText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { studioShareToolbar }
-            .safeAreaInset(edge: .bottom) { studioToastBar }
+            .overlay(alignment: .bottom) { studioToastBar }
             .alert("エラー", isPresented: $showError) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -747,13 +754,18 @@ struct StudioView: View {
     @ViewBuilder
     private var studioToastBar: some View {
         if let toast {
-            Text(toast)
-                .font(.footnote)
+            Label(toast.message, systemImage: toast.systemImage)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(theme.primaryText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+                .padding(.horizontal, 20)
                 .padding(.bottom, 8)
+                .allowsHitTesting(false)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(1)
         }
     }
 
@@ -837,6 +849,9 @@ struct StudioView: View {
 
     private func handleStudioDisappear() {
         fineTuneTask?.cancel()
+        toastTask?.cancel()
+        toastTask = nil
+        toast = nil
         generationViewModel.cancelPlayback()
         exportTask?.cancel()
         operationState.cancel()
@@ -1962,7 +1977,7 @@ struct StudioView: View {
                 ? service.lastExportURL?.lastPathComponent
                 : nil
             try library.save(currentIntent(), exportFileName: exportFileName)
-            showToast("ライブラリに保存しました")
+            showToast("ライブラリに保存しました", systemImage: "checkmark.circle.fill")
         }
     }
 
@@ -1999,14 +2014,24 @@ struct StudioView: View {
         showError = true
     }
 
-    private func showToast(_ message: String) {
+    private func showToast(_ message: String, systemImage: String = "info.circle.fill") {
+        toastTask?.cancel()
+        let newToast = StudioToast(message: message, systemImage: systemImage)
         withAnimation {
-            toast = message
+            toast = newToast
         }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
+        UIAccessibility.post(notification: .announcement, argument: message)
+        toastTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
             withAnimation {
-                if toast == message { toast = nil }
+                if toast?.id == newToast.id {
+                    toast = nil
+                    toastTask = nil
+                }
             }
         }
     }
@@ -2027,25 +2052,32 @@ struct StudioView: View {
 // MARK: - Library
 
 private enum LibrarySort: String, CaseIterable, Identifiable {
-    case newest
     case type
-    case genre
+    case newest
+    case category
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .type: return "種類ごと"
         case .newest: return "新しい順"
-        case .type: return "種類"
-        case .genre: return "ゲームタイプ"
+        case .category: return "カテゴリ順"
         }
     }
+}
+
+private struct LibraryCategorySection: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    let entries: [LibraryEntry]
 }
 
 struct LibraryView: View {
     @Environment(\.appTheme) private var theme
     @ObservedObject private var library = LibraryStore.shared
-    @State private var sort: LibrarySort = .newest
+    @AppStorage("librarySort") private var sortRawValue = LibrarySort.type.rawValue
     @State private var playbackViewModel = LibraryPlaybackViewModel()
     @State private var errorText: String?
     @State private var showError = false
@@ -2054,25 +2086,19 @@ struct LibraryView: View {
 
     private var service: GenerationService { GenerationService.shared }
 
-    private var sortedEntries: [LibraryEntry] {
-        switch sort {
-        case .newest:
-            return library.entries.sorted { $0.savedAt > $1.savedAt }
-        case .type:
-            return library.entries.sorted {
-                if $0.intent.soundType != $1.intent.soundType {
-                    return $0.intent.soundType.rawValue < $1.intent.soundType.rawValue
-                }
-                return $0.savedAt > $1.savedAt
-            }
-        case .genre:
-            return library.entries.sorted {
-                if $0.intent.genreId != $1.intent.genreId {
-                    return $0.intent.genreId < $1.intent.genreId
-                }
-                return $0.savedAt > $1.savedAt
-            }
-        }
+    private var sort: LibrarySort {
+        LibrarySort(rawValue: sortRawValue) ?? .type
+    }
+
+    private var sortBinding: Binding<LibrarySort> {
+        Binding(
+            get: { sort },
+            set: { sortRawValue = $0.rawValue }
+        )
+    }
+
+    private var newestEntries: [LibraryEntry] {
+        library.entries.sorted(by: newestFirst)
     }
 
     var body: some View {
@@ -2084,18 +2110,19 @@ struct LibraryView: View {
                     description: Text("制作画面右上の共有メニューから保存できます。")
                 )
                 .themedListRowBackground(theme)
-            } else {
-                ForEach(sortedEntries) { entry in
-                    libraryRow(entry)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: !isDeleting) {
-                            Button(role: .destructive) {
-                                remove(entry)
-                            } label: {
-                                Label("削除", systemImage: "trash")
-                            }
-                        }
+            } else if sort == .type {
+                librarySection(title: "BGM", systemImage: "music.note.list", type: .bgm)
+                librarySection(title: "効果音", systemImage: "waveform", type: .sfx)
+            } else if sort == .category {
+                ForEach(categorySections) { section in
+                    Section {
+                        libraryRows(section.entries)
+                    } header: {
+                        Label(section.title, systemImage: section.systemImage)
+                    }
                 }
-                .themedListRowBackground(theme)
+            } else {
+                libraryRows(newestEntries)
             }
         }
         .navigationTitle("ライブラリ")
@@ -2117,19 +2144,22 @@ struct LibraryView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 if !library.entries.isEmpty {
                     Menu {
-                        Picker("並び替え", selection: $sort) {
+                        Picker("並び替え", selection: sortBinding) {
                             ForEach(LibrarySort.allCases) { option in
                                 Text(option.label).tag(option)
                             }
                         }
                     } label: {
-                        Label("並び替え", systemImage: "arrow.up.arrow.down")
+                        Label(sort.label, systemImage: "arrow.up.arrow.down")
                     }
                     .disabled(isDeleting)
                 }
             }
         }
         .onAppear {
+            if sortRawValue == "name" {
+                sortRawValue = LibrarySort.category.rawValue
+            }
             library.load()
             if let loadError = library.consumeLoadError() {
                 errorText = loadError
@@ -2153,6 +2183,131 @@ struct LibraryView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorText ?? "不明なエラーです")
+        }
+    }
+
+    @ViewBuilder
+    private func librarySection(title: String, systemImage: String, type: SoundType) -> some View {
+        let entries = entries(for: type)
+        if !entries.isEmpty {
+            Section {
+                libraryRows(entries)
+            } header: {
+                Label(title, systemImage: systemImage)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func libraryRows(_ entries: [LibraryEntry]) -> some View {
+        ForEach(entries) { entry in
+            libraryRow(entry)
+                .swipeActions(edge: .trailing, allowsFullSwipe: !isDeleting) {
+                    Button(role: .destructive) {
+                        remove(entry)
+                    } label: {
+                        Label("削除", systemImage: "trash")
+                    }
+                }
+        }
+        .themedListRowBackground(theme)
+    }
+
+    private func entries(for type: SoundType) -> [LibraryEntry] {
+        library.entries
+            .filter { $0.intent.soundType == type }
+            .sorted(by: newestFirst)
+    }
+
+    private var categorySections: [LibraryCategorySection] {
+        makeCategorySections(
+            type: .bgm,
+            groups: Catalog.bgmSceneGroupOrder,
+            systemImage: "music.note.list"
+        ) + makeCategorySections(
+            type: .sfx,
+            groups: Catalog.sfxPurposeGroupOrder,
+            systemImage: "waveform"
+        )
+    }
+
+    private func makeCategorySections(
+        type: SoundType,
+        groups: [String],
+        systemImage: String
+    ) -> [LibraryCategorySection] {
+        var sections = groups.compactMap { group -> LibraryCategorySection? in
+            let matchingEntries = library.entries
+                .filter { $0.intent.soundType == type && topLevelCategory(for: $0) == group }
+                .sorted(by: categoryFirst)
+            guard !matchingEntries.isEmpty else { return nil }
+            return LibraryCategorySection(
+                id: "\(type.rawValue):\(group)",
+                title: "\(type.displayName)・\(group)",
+                systemImage: systemImage,
+                entries: matchingEntries
+            )
+        }
+
+        let uncategorizedEntries = library.entries
+            .filter {
+                $0.intent.soundType == type
+                    && !groups.contains(topLevelCategory(for: $0) ?? "")
+            }
+            .sorted(by: newestFirst)
+        if !uncategorizedEntries.isEmpty {
+            sections.append(LibraryCategorySection(
+                id: "\(type.rawValue):other",
+                title: "\(type.displayName)・その他",
+                systemImage: systemImage,
+                entries: uncategorizedEntries
+            ))
+        }
+        return sections
+    }
+
+    private func topLevelCategory(for entry: LibraryEntry) -> String? {
+        switch entry.intent.soundType {
+        case .bgm:
+            return Catalog.BGMScene.resolve(entry.intent.sceneId)?.group
+        case .sfx:
+            return Catalog.SFXPurpose(rawValue: entry.intent.purposeId ?? "")?.group
+        }
+    }
+
+    private func newestFirst(_ lhs: LibraryEntry, _ rhs: LibraryEntry) -> Bool {
+        if lhs.savedAt != rhs.savedAt {
+            return lhs.savedAt > rhs.savedAt
+        }
+        return lhs.intent.title.localizedStandardCompare(rhs.intent.title) == .orderedAscending
+    }
+
+    private func categoryFirst(_ lhs: LibraryEntry, _ rhs: LibraryEntry) -> Bool {
+        let lhsPosition = categoryPosition(for: lhs)
+        let rhsPosition = categoryPosition(for: rhs)
+        if lhsPosition.type != rhsPosition.type {
+            return lhsPosition.type < rhsPosition.type
+        }
+        if lhsPosition.item != rhsPosition.item {
+            return lhsPosition.item < rhsPosition.item
+        }
+        return newestFirst(lhs, rhs)
+    }
+
+    private func categoryPosition(for entry: LibraryEntry) -> (type: Int, item: Int) {
+        switch entry.intent.soundType {
+        case .bgm:
+            guard let scene = Catalog.BGMScene.resolve(entry.intent.sceneId),
+                  let index = Catalog.BGMScene.allCases.firstIndex(of: scene) else {
+                return (0, Int.max)
+            }
+            return (0, index)
+        case .sfx:
+            guard let purpose = Catalog.SFXPurpose(rawValue: entry.intent.purposeId ?? ""),
+                  let index = Catalog.SFXPurpose.allCases.firstIndex(of: purpose) else {
+                return (1, Int.max)
+            }
+            return (1, index)
         }
     }
 
@@ -2216,9 +2371,18 @@ struct LibraryView: View {
 
     private func libraryText(_ entry: LibraryEntry) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(entry.intent.title)
-                .font(.body.weight(.medium))
-                .foregroundStyle(theme.primaryText)
+            HStack(spacing: 8) {
+                Label(typeLabel(entry), systemImage: typeSystemImage(entry))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(theme.accent)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(theme.accent.opacity(0.14), in: Capsule())
+                Text(entry.intent.title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+            }
             Text(subtitle(entry))
                 .font(.caption)
                 .foregroundStyle(theme.secondaryText)
@@ -2233,16 +2397,21 @@ struct LibraryView: View {
         let mood = Catalog.Mood(rawValue: entry.intent.moodId)?.displayName ?? entry.intent.moodId
         if entry.intent.soundType == .bgm {
             let genre = Catalog.Genre(rawValue: entry.intent.genreId)?.displayName ?? entry.intent.genreId
-            let scene = Catalog.BGMScene.resolve(entry.intent.sceneId)?.displayName
-                ?? entry.intent.sceneId
-                ?? "BGM"
-            return "\(genre) · \(scene) · \(mood)"
+            return "\(genre) · \(mood)"
         } else {
-            let purpose = Catalog.SFXPurpose(rawValue: entry.intent.purposeId ?? "")?.displayName
-                ?? entry.intent.purposeId
-                ?? "SE"
-            return "\(purpose) · \(mood)"
+            guard let purpose = Catalog.SFXPurpose(rawValue: entry.intent.purposeId ?? "") else {
+                return mood
+            }
+            return "\(purpose.group) · \(mood)"
         }
+    }
+
+    private func typeLabel(_ entry: LibraryEntry) -> String {
+        entry.intent.soundType == .bgm ? "BGM" : "効果音"
+    }
+
+    private func typeSystemImage(_ entry: LibraryEntry) -> String {
+        entry.intent.soundType == .bgm ? "music.note.list" : "waveform"
     }
 
     private func dateText(_ date: Date) -> String {
