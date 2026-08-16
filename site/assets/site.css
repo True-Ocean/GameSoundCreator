@@ -133,15 +133,13 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
 
 /* Retro Sound application identity: lime, amber, cyan, and magenta. */
 
-/* The product icon replaces the studio illustration in the Retro Sound hero. */
+/* Equalizer artwork sits in the hero as a background motif, not as an app icon. */
 .hero-poster { display: none; }
 .hero-content { z-index: 1; }
-.hero-app-icon { position: absolute; z-index: 0; top: 50%; right: max(8vw, 60px); width: min(34vw, 460px); transform: translateY(-50%) rotate(-5deg); pointer-events: none; }
-.hero-app-icon::before { content: ""; position: absolute; z-index: -1; inset: 8%; border-radius: 28%; background: linear-gradient(135deg, var(--lime), var(--amber), var(--cyan), var(--magenta)); filter: blur(42px); opacity: .38; }
-.hero-app-icon img { display: block; width: 100%; height: auto; border-radius: 23%; box-shadow: 0 30px 70px rgba(0,0,0,.48), 0 0 0 1px rgba(245,239,228,.17); }
-@media (max-width: 720px) { .hero-app-icon { right: -13vw; width: min(68vw, 320px); opacity: .46; transform: translateY(-48%) rotate(-5deg); } }
+.hero-visual { position: absolute; z-index: 0; top: 50%; right: max(4vw, 24px); width: min(42vw, 560px); transform: translateY(-50%); pointer-events: none; }
+.hero-visual img { display: block; width: 100%; height: auto; }
+@media (max-width: 720px) { .hero-visual { right: -10vw; width: min(78vw, 360px); opacity: .52; } }
 
-.hero-app-icon::before { background: linear-gradient(135deg, var(--lime), var(--amber)); }
 .retro-title { margin: 0 0 27px; font: 800 clamp(1.7rem, 3.6vw, 2.4rem)/1.15 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; letter-spacing: .08em; background: linear-gradient(100deg, var(--paper) 0%, var(--amber-bright) 50%, var(--lime) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 5px 14px rgba(232,169,56,.18)); }
 @media (max-width: 720px) { .retro-title { margin-bottom: 23px; font-size: 1.55rem; } }
 
@@ -149,7 +147,6 @@ code { padding: 2px 5px; background: var(--surface-raised); border-radius: 4px; 
 :root { --cyan: #56c7e9; --magenta: #e96dbd; }
 .hero { background: radial-gradient(circle at 78% 28%, rgba(232,169,56,.32), transparent 29%), radial-gradient(circle at 18% 88%, rgba(185,228,83,.22), transparent 24%), radial-gradient(circle at 60% 80%, rgba(86,199,233,.17), transparent 25%), radial-gradient(circle at 88% 80%, rgba(233,109,189,.16), transparent 22%); }
 .hero h1 span { background: linear-gradient(90deg, var(--lime), var(--amber), var(--cyan), var(--magenta)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hero-app-icon::before { background: linear-gradient(135deg, var(--lime), var(--amber), var(--cyan), var(--magenta)); opacity: .46; }
 .nav-links a:hover { color: var(--cyan); }
 .button { border-color: var(--amber); background: linear-gradient(100deg, var(--lime), var(--amber)); }
 .button:hover { background: linear-gradient(100deg, var(--amber), var(--cyan)); }
